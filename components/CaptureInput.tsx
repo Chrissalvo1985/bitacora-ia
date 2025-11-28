@@ -302,25 +302,87 @@ const CaptureInput: React.FC = () => {
   const drawOnCanvas = (x: number, y: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: false });
     if (!ctx) return;
 
-    ctx.lineWidth = 2;
+    // Better settings for smooth drawing
+    ctx.lineWidth = 3;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.strokeStyle = '#1f2937';
+    ctx.globalCompositeOperation = 'source-over';
 
     if (lastPointRef.current) {
       ctx.beginPath();
       ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
       ctx.lineTo(x, y);
       ctx.stroke();
+    } else {
+      // Draw a dot if it's the first point
+      ctx.beginPath();
+      ctx.arc(x, y, ctx.lineWidth / 2, 0, Math.PI * 2);
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.fill();
     }
     lastPointRef.current = { x, y };
   };
 
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     // Only draw if pen mode is explicitly enabled
     if (isPenMode) {
+      e.preventDefault();
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.setPointerCapture(e.pointerId);
+      }
+      setIsDrawing(true);
+      const coords = getCanvasCoordinatesFromPointer(e);
+      if (coords) {
+        lastPointRef.current = coords;
+        const ctx = canvas?.getContext('2d');
+        if (ctx) {
+          ctx.beginPath();
+          ctx.moveTo(coords.x, coords.y);
+        }
+      }
+    }
+  };
+
+  const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isDrawing && isPenMode) {
+      e.preventDefault();
+      const coords = getCanvasCoordinatesFromPointer(e);
+      if (coords) {
+        drawOnCanvas(coords.x, coords.y);
+      }
+    }
+  };
+
+  const handleCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isPenMode) {
+      e.preventDefault();
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+      setIsDrawing(false);
+      lastPointRef.current = null;
+    }
+  };
+
+  const getCanvasCoordinatesFromPointer = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    // Get coordinates in CSS pixels (canvas is already scaled internally)
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    return { x, y };
+  };
+
+  // Legacy mouse handlers for desktop
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isPenMode && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
       setIsDrawing(true);
       const coords = getCanvasCoordinates(e);
       if (coords) {
@@ -338,7 +400,7 @@ const CaptureInput: React.FC = () => {
   };
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isDrawing && isPenMode) {
+    if (isDrawing && isPenMode && e.pointerType !== 'pen' && e.pointerType !== 'touch') {
       const coords = getCanvasCoordinates(e);
       if (coords) {
         drawOnCanvas(coords.x, coords.y);
@@ -349,35 +411,6 @@ const CaptureInput: React.FC = () => {
   const handleCanvasMouseUp = () => {
     setIsDrawing(false);
     lastPointRef.current = null;
-  };
-
-  const handleCanvasTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    // Only draw if pen mode is explicitly enabled
-    if (isPenMode) {
-      setIsDrawing(true);
-      const coords = getCanvasCoordinates(e);
-      if (coords) {
-        lastPointRef.current = coords;
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.beginPath();
-            ctx.moveTo(coords.x, coords.y);
-          }
-        }
-      }
-    }
-  };
-
-  const handleCanvasTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    if (isDrawing) {
-      const coords = getCanvasCoordinates(e);
-      if (coords) {
-        drawOnCanvas(coords.x, coords.y);
-      }
-    }
   };
 
   const clearCanvas = () => {
@@ -400,17 +433,30 @@ const CaptureInput: React.FC = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: false });
     if (!ctx) return;
 
-    // Set canvas size
+    // Set canvas size with proper scaling for high DPI displays
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+      const dpr = window.devicePixelRatio || 1;
+      
+      // Set actual size in memory (scaled for high DPI)
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      
+      // Scale the drawing context so everything draws at the correct size
+      ctx.scale(dpr, dpr);
+      
+      // Set display size (CSS pixels)
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      
+      // Configure drawing settings
       ctx.strokeStyle = '#1f2937';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3;
       ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
     };
 
     resizeCanvas();
@@ -467,36 +513,46 @@ const CaptureInput: React.FC = () => {
 
       <div className={`flex-1 ${isExpanded ? 'mb-3' : ''}`}>
         {isPenMode && isExpanded ? (
-          <div className="relative">
-            <canvas
-              ref={canvasRef}
-              onMouseDown={handleCanvasMouseDown}
-              onMouseMove={handleCanvasMouseMove}
-              onMouseUp={handleCanvasMouseUp}
-              onMouseLeave={handleCanvasMouseUp}
-              onTouchStart={handleCanvasTouchStart}
-              onTouchMove={handleCanvasTouchMove}
-              onTouchEnd={handleCanvasMouseUp}
-              className="w-full h-64 md:h-80 border-2 border-gray-200 rounded-xl cursor-crosshair bg-white touch-none"
-              style={{ touchAction: 'none' }}
-            />
-            <button
-              onClick={() => {
-                setIsPenMode(false);
-                clearCanvas();
-              }}
-              className="absolute top-2 right-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
-            >
-              <ICONS.X size={14} />
-              Modo texto
-            </button>
-            <button
-              onClick={clearCanvas}
-              className="absolute top-2 left-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
-            >
-              <ICONS.Eraser size={14} />
-              Limpiar
-            </button>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={clearCanvas}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+              >
+                <ICONS.Eraser size={14} />
+                Limpiar
+              </button>
+              <button
+                onClick={() => {
+                  setIsPenMode(false);
+                  clearCanvas();
+                }}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+              >
+                <ICONS.X size={14} />
+                Modo texto
+              </button>
+            </div>
+            <div className="relative">
+              <canvas
+                ref={canvasRef}
+                onPointerDown={handleCanvasPointerDown}
+                onPointerMove={handleCanvasPointerMove}
+                onPointerUp={handleCanvasPointerUp}
+                onPointerCancel={handleCanvasPointerUp}
+                onMouseDown={handleCanvasMouseDown}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseLeave={handleCanvasMouseUp}
+                className="w-full h-64 md:h-80 border-2 border-gray-200 rounded-xl cursor-crosshair bg-white"
+                style={{ 
+                  touchAction: 'none',
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none',
+                  msUserSelect: 'none'
+                }}
+              />
+            </div>
           </div>
         ) : (
           <textarea
