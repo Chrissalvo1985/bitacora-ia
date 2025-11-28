@@ -561,7 +561,7 @@ const CaptureInput: React.FC = () => {
             onChange={(e) => setText(e.target.value)}
             onFocus={() => setIsExpanded(true)}
             onKeyDown={handleKeyDown}
-            placeholder={isExpanded ? "Escribe o dicta... (ej: 'Acordamos con Juan revisar el proyecto mañana')" : "✨ ¿Qué tienes en mente?"}
+            placeholder={isExpanded ? "Escribe o dicta... (ej: 'Acordamos con Juan revisar el proyecto mañana') 🎤✨" : "✨ ¿Qué tienes en mente, crack?"}
             className={`
               w-full resize-none outline-none bg-transparent placeholder-gray-400 text-gray-800 font-medium
               ${isExpanded ? 'h-24 md:h-28 text-base leading-relaxed' : 'h-7 md:h-8 py-0.5 overflow-hidden text-sm md:text-base'}

@@ -92,11 +92,40 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
   const completedTasks = entries.reduce((acc, entry) => acc + entry.tasks.filter(t => t.isDone).length, 0);
   const completionRate = totalEntries > 0 ? Math.round((completedTasks / (completedTasks + openTasks)) * 100) : 0;
 
-  // Dynamic greeting
+  // Dynamic greeting with personality
   const hour = new Date().getHours();
-  let greeting = "¡Buenas noches!";
-  if (hour < 12) greeting = "¡Buenos días, crack! ☀️";
-  else if (hour < 20) greeting = "¡Buenas tardes! 🚀";
+  const greetings = {
+    morning: [
+      "¡Buenos días, crack! ☀️",
+      "¡Arriba, campeón! 🌅",
+      "¡Día nuevo, oportunidades nuevas! ✨",
+      "¡Buenos días, jefe! 💪",
+      "¡Hora de conquistar el día! 🚀"
+    ],
+    afternoon: [
+      "¡Buenas tardes! 🚀",
+      "¡Sigue así, máquina! ⚡",
+      "¡Medio día, medio éxito! 🎯",
+      "¡Buenas tardes, crack! 🌤️",
+      "¡A full, como siempre! 🔥"
+    ],
+    night: [
+      "¡Buenas noches! 🌙",
+      "¡Casi listo, crack! ⭐",
+      "¡Última recta del día! 💫",
+      "¡Buenas noches, jefe! 🌃",
+      "¡A cerrar con broche de oro! 🏆"
+    ]
+  };
+  
+  let greeting = "¡Buenos días!";
+  if (hour < 12) {
+    greeting = greetings.morning[Math.floor(Math.random() * greetings.morning.length)];
+  } else if (hour < 20) {
+    greeting = greetings.afternoon[Math.floor(Math.random() * greetings.afternoon.length)];
+  } else {
+    greeting = greetings.night[Math.floor(Math.random() * greetings.night.length)];
+  }
 
   return (
     <div className="max-w-[1600px] mx-auto h-screen flex flex-col px-4 md:px-6 lg:px-8 overflow-hidden">
@@ -128,17 +157,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
             Resumen
           </h3>
           <div className="grid grid-cols-3 gap-2 md:gap-3">
-            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm">
+            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow-md transition-shadow">
               <p className="text-xl md:text-2xl font-bold text-gray-800">{totalEntries}</p>
-              <p className="text-xs text-gray-500 font-medium">Entradas</p>
+              <p className="text-xs text-gray-500 font-medium">Entradas 📝</p>
             </div>
-            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm">
+            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow-md transition-shadow">
               <p className="text-xl md:text-2xl font-bold text-indigo-600">{openTasks}</p>
-              <p className="text-xs text-gray-500 font-medium">Pendientes</p>
+              <p className="text-xs text-gray-500 font-medium">Pendientes ⏳</p>
             </div>
-            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm">
+            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow-md transition-shadow">
               <p className="text-xl md:text-2xl font-bold text-emerald-600">{completedTasks}</p>
-              <p className="text-xs text-gray-500 font-medium">Completadas</p>
+              <p className="text-xs text-gray-500 font-medium">Completadas ✅</p>
             </div>
           </div>
         </div>
@@ -293,6 +322,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
             </div>
             <p className="text-gray-500 font-medium text-sm">Tu bitácora está vacía.</p>
             <p className="text-xs text-gray-400 mt-1">Escribe tu primera idea arriba 👆</p>
+            <p className="text-xs text-gray-300 mt-2 italic">¡Es hora de empezar a hacer historia! 📖✨</p>
           </motion.div>
         </div>
       )}

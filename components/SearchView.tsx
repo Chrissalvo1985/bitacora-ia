@@ -64,49 +64,49 @@ const SearchView: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto pb-24 md:pb-8 min-h-screen">
-      <div className="mb-8 mt-4">
-        <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900 flex items-center gap-3 mb-2">
-          <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600">
-            <ICONS.Search size={28} />
+      <div className="mb-4 md:mb-8 mt-2 md:mt-4">
+        <h2 className="text-2xl md:text-3xl lg:text-4xl font-extrabold text-gray-900 flex items-center gap-2 md:gap-3 mb-1 md:mb-2">
+          <div className="bg-indigo-100 p-1.5 md:p-2 rounded-xl text-indigo-600">
+            <ICONS.Search size={20} className="md:w-7 md:h-7" />
           </div>
           Búsqueda Inteligente
         </h2>
-        <p className="text-base md:text-lg text-gray-500 ml-1">Encuentra cualquier cosa en tu bitácora.</p>
+        <p className="text-sm md:text-base lg:text-lg text-gray-500 ml-1">Encuentra cualquier cosa en tu bitácora.</p>
       </div>
 
       {/* Search Bar */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-3xl shadow-lg border border-gray-100 p-5 md:p-6 mb-6"
+        className="bg-white rounded-2xl md:rounded-3xl shadow-lg border border-gray-100 p-3 md:p-5 lg:p-6 mb-4 md:mb-6"
       >
-        <div className="flex gap-3 mb-4">
+        <div className="flex flex-col sm:flex-row gap-2 md:gap-3 mb-3 md:mb-4">
           <div className="flex-1 relative">
-            <ICONS.Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={22} />
+            <ICONS.Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 md:w-5 md:h-5" />
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Buscar por palabra clave, persona, proyecto..."
-              className="w-full pl-14 pr-4 py-3.5 rounded-2xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-base"
+              placeholder="¿Qué buscas hoy? 🔍"
+              className="w-full pl-10 md:pl-14 pr-3 md:pr-4 py-2.5 md:py-3.5 rounded-xl md:rounded-2xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-sm md:text-base"
             />
           </div>
           <button
             onClick={handleSearch}
             disabled={isSearching}
-            className="px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base"
+            className="px-4 md:px-6 py-2.5 md:py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl md:rounded-2xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base flex items-center justify-center gap-2"
           >
-            {isSearching ? <ICONS.Loader2 className="animate-spin" size={22} /> : 'Buscar'}
+            {isSearching ? <ICONS.Loader2 className="animate-spin w-4 h-4 md:w-5 md:h-5" /> : 'Buscar'}
           </button>
         </div>
 
         {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-3">
           <select
             value={filters.bookId || ''}
             onChange={(e) => setFilters({ ...filters, bookId: e.target.value || undefined })}
-            className="px-4 py-2.5 rounded-xl border border-gray-200 focus:border-indigo-500 outline-none text-base"
+            className="px-3 md:px-4 py-2 md:py-2.5 rounded-xl border border-gray-200 focus:border-indigo-500 outline-none text-sm md:text-base"
           >
             <option value="">Todas las libretas</option>
             {books.map(book => (
@@ -117,7 +117,7 @@ const SearchView: React.FC = () => {
           <select
             value={filters.type || ''}
             onChange={(e) => setFilters({ ...filters, type: e.target.value as NoteType || undefined })}
-            className="px-4 py-2.5 rounded-xl border border-gray-200 focus:border-indigo-500 outline-none text-base"
+            className="px-3 md:px-4 py-2 md:py-2.5 rounded-xl border border-gray-200 focus:border-indigo-500 outline-none text-sm md:text-base"
           >
             <option value="">Todos los tipos</option>
             {Object.values(NoteType).map(type => (
@@ -130,7 +130,7 @@ const SearchView: React.FC = () => {
             value={filters.assignee || ''}
             onChange={(e) => setFilters({ ...filters, assignee: e.target.value || undefined })}
             placeholder="Filtrar por responsable"
-            className="px-4 py-2.5 rounded-xl border border-gray-200 focus:border-indigo-500 outline-none text-base"
+            className="px-3 md:px-4 py-2 md:py-2.5 rounded-xl border border-gray-200 focus:border-indigo-500 outline-none text-sm md:text-base"
           />
         </div>
       </motion.div>
@@ -144,8 +144,8 @@ const SearchView: React.FC = () => {
             exit={{ opacity: 0 }}
             className="space-y-4 md:space-y-6"
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-base text-gray-500">
+            <div className="flex items-center justify-between mb-3 md:mb-4">
+              <div className="text-sm md:text-base text-gray-500">
                 {results.length} {results.length === 1 ? 'resultado encontrado' : 'resultados encontrados'}
               </div>
               {results.length > itemsPerPage && (
@@ -168,12 +168,12 @@ const SearchView: React.FC = () => {
             </div>
             
             {hasMore && (
-              <div className="mt-8 flex justify-center">
+              <div className="mt-4 md:mt-8 flex justify-center">
                 <button
                   onClick={loadMore}
-                  className="px-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-all shadow-sm"
+                  className="px-4 md:px-6 py-2 md:py-3 bg-white border border-gray-200 rounded-xl text-xs md:text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-all shadow-sm"
                 >
-                  Cargar más ({results.length - paginatedResults.length} restantes)
+                  Cargar más ({results.length - paginatedResults.length} restantes) ⬇️
                 </button>
               </div>
             )}
@@ -188,11 +188,15 @@ const SearchView: React.FC = () => {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-16 bg-white rounded-3xl border border-dashed border-gray-200"
+            className="text-center py-8 md:py-16 bg-white rounded-2xl md:rounded-3xl border border-dashed border-gray-200 relative overflow-hidden"
           >
-            <ICONS.Search className="mx-auto text-gray-300 mb-4" size={48} />
-            <p className="text-gray-500 font-medium">No se encontraron resultados</p>
-            <p className="text-sm text-gray-400 mt-2">Intenta con otros términos de búsqueda</p>
+            <div className="absolute top-0 right-0 opacity-5 pointer-events-none">
+              <span className="text-8xl">🔍</span>
+            </div>
+            <ICONS.Search className="mx-auto text-gray-300 mb-3 md:mb-4 w-9 h-9 md:w-12 md:h-12" />
+            <p className="text-sm md:text-base text-gray-500 font-medium">Nada por aquí, nada por allá... 🤷‍♂️</p>
+            <p className="text-xs md:text-sm text-gray-400 mt-1 md:mt-2">Intenta con otros términos o palabras clave diferentes</p>
+            <p className="text-xs text-gray-300 mt-2 italic">A veces la mejor búsqueda es la que no encuentra nada 😉</p>
           </motion.div>
         ) : null}
       </AnimatePresence>

@@ -98,27 +98,27 @@ const TaskView: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto pb-24 md:pb-8">
-      <div className="mb-6 mt-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+      <div className="mb-4 md:mb-6 mt-2 md:mt-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 mb-3 md:mb-4">
             <div>
-              <h2 className="text-3xl font-extrabold text-gray-900 flex items-center gap-3">
-                <div className="bg-blue-100 p-2 rounded-xl text-blue-600">
-                    <ICONS.ListTodo size={28} />
+              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 flex items-center gap-2 md:gap-3">
+                <div className="bg-blue-100 p-1.5 md:p-2 rounded-xl text-blue-600">
+                    <ICONS.ListTodo size={20} className="md:w-7 md:h-7" />
                 </div>
                 Central de Misiones
               </h2>
-              <p className="text-gray-500 mt-2 ml-1">Todo lo que tienes pendiente para conquistar el mundo.</p>
+              <p className="text-sm md:text-base text-gray-500 mt-1 md:mt-2 ml-1">Todo lo que tienes pendiente para conquistar el mundo. 🚀💪</p>
             </div>
             {allTasks.length > 5 && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 font-medium">Ordenar:</span>
+                <span className="text-xs text-gray-500 font-medium hidden sm:inline">Ordenar:</span>
                 <select
                   value={sortBy}
                   onChange={(e) => {
                     setSortBy(e.target.value as 'date' | 'priority' | 'book');
                     setCurrentPage(1);
                   }}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none text-sm bg-white"
+                  className="px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-gray-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none text-xs md:text-sm bg-white"
                 >
                   <option value="date">Más recientes</option>
                   <option value="priority">Prioridad</option>
@@ -129,19 +129,23 @@ const TaskView: React.FC = () => {
           </div>
           
           {allTasks.length > 0 && (
-            <div className="text-sm text-gray-500 mb-4 px-1">
+            <div className="text-xs md:text-sm text-gray-500 mb-3 md:mb-4 px-1">
               {allTasks.length} {allTasks.length === 1 ? 'misión pendiente' : 'misiones pendientes'}
             </div>
           )}
       </div>
 
       {allTasks.length === 0 ? (
-        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-3xl p-10 text-center border border-emerald-100">
-          <div className="bg-white w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm text-emerald-500">
-              <ICONS.CheckCircle2 size={32} />
+        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl md:rounded-3xl p-6 md:p-10 text-center border border-emerald-100 relative overflow-hidden">
+          <div className="absolute top-0 right-0 opacity-10 pointer-events-none">
+            <span className="text-6xl">🎉</span>
           </div>
-          <p className="font-bold text-xl text-emerald-800 mb-1">¡Estás al día!</p>
-          <p className="text-emerald-600 opacity-80">No hay misiones pendientes. Tómate un café. ☕️</p>
+          <div className="bg-white w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center mx-auto mb-3 md:mb-4 shadow-sm text-emerald-500">
+              <ICONS.CheckCircle2 size={24} className="md:w-8 md:h-8" />
+          </div>
+          <p className="font-bold text-lg md:text-xl text-emerald-800 mb-1">¡Estás al día, crack! 🎯</p>
+          <p className="text-sm md:text-base text-emerald-600 opacity-80 mb-2">No hay misiones pendientes. Tómate un café. ☕️</p>
+          <p className="text-xs text-emerald-500 opacity-60 italic">¡Eres una máquina de productividad! 💪✨</p>
         </div>
       ) : (
         <>
@@ -181,33 +185,33 @@ const TaskView: React.FC = () => {
                       >
                         {/* Compact Header */}
                         <div 
-                          className="p-5 md:p-6 cursor-pointer hover:bg-gray-50 transition-colors"
+                          className="p-3 md:p-5 lg:p-6 cursor-pointer hover:bg-gray-50 transition-colors"
                           onClick={() => toggleTaskExpand(taskKey)}
                         >
-                          <div className="flex items-start gap-4">
+                          <div className="flex items-start gap-2 md:gap-4">
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleTask(task.entryId, task.taskIndex);
                               }}
-                              className="mt-1 text-gray-300 hover:text-indigo-500 transition-all hover:scale-110 flex-shrink-0"
+                              className="mt-0.5 md:mt-1 text-gray-300 hover:text-indigo-500 transition-all hover:scale-110 flex-shrink-0"
                             >
-                              <div className="w-6 h-6 border-2 border-current rounded-lg" />
+                              <div className="w-5 h-5 md:w-6 md:h-6 border-2 border-current rounded-lg" />
                             </button>
                             
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-3 mb-3">
-                                <p className={`text-base md:text-lg text-gray-800 font-semibold leading-relaxed flex-1 ${!isExpanded ? 'line-clamp-2' : ''}`}>
+                              <div className="flex items-start justify-between gap-2 md:gap-3 mb-2 md:mb-3">
+                                <p className={`text-sm md:text-base lg:text-lg text-gray-800 font-semibold leading-relaxed flex-1 ${!isExpanded ? 'line-clamp-2' : ''}`}>
                                   {task.description}
                                 </p>
-                                <div className="flex items-center gap-2 flex-shrink-0">
+                                <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
                                   {task.priority === 'HIGH' && (
-                                    <span className="text-xs uppercase font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
+                                    <span className="text-[10px] md:text-xs uppercase font-bold text-rose-600 bg-rose-50 px-1.5 md:px-2.5 py-0.5 md:py-1 rounded-md border border-rose-200">
                                       Alta
                                     </span>
                                   )}
                                   {task.priority === 'MEDIUM' && (
-                                    <span className="text-xs uppercase font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+                                    <span className="text-[10px] md:text-xs uppercase font-bold text-amber-600 bg-amber-50 px-1.5 md:px-2.5 py-0.5 md:py-1 rounded-md border border-amber-200">
                                       Media
                                     </span>
                                   )}
@@ -216,21 +220,21 @@ const TaskView: React.FC = () => {
                                       e.stopPropagation();
                                       toggleTaskExpand(taskKey);
                                     }}
-                                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
+                                    className="p-1 md:p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
                                   >
                                     <motion.div
                                       animate={{ rotate: isExpanded ? 180 : 0 }}
                                       transition={{ duration: 0.2 }}
                                     >
-                                      <ICONS.ChevronRight size={20} />
+                                      <ICONS.ChevronRight size={16} className="md:w-5 md:h-5" />
                                     </motion.div>
                                   </button>
                                 </div>
                               </div>
                               
-                              <div className="flex flex-wrap items-center gap-2.5 mb-2">
-                                <span className="text-sm uppercase font-medium text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100 flex items-center gap-2">
-                                  <ICONS.Book size={14} />
+                              <div className="flex flex-wrap items-center gap-1.5 md:gap-2.5 mb-2">
+                                <span className="text-xs md:text-sm uppercase font-medium text-gray-500 bg-gray-50 px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-gray-100 flex items-center gap-1 md:gap-2">
+                                  <ICONS.Book size={12} className="md:w-3.5 md:h-3.5" />
                                   {task.bookName}
                                 </span>
                                 
@@ -247,7 +251,7 @@ const TaskView: React.FC = () => {
                                         if (e.key === 'Escape') handleCancelEdit();
                                       }}
                                       placeholder="Responsable..."
-                                      className="text-sm font-semibold bg-white text-indigo-600 px-3 py-1.5 rounded-lg border-2 border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none min-w-[120px]"
+                                      className="text-xs md:text-sm font-semibold bg-white text-indigo-600 px-2 md:px-3 py-1 md:py-1.5 rounded-lg border-2 border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none min-w-[100px] md:min-w-[120px]"
                                       autoFocus
                                     />
                                   </div>
@@ -257,7 +261,7 @@ const TaskView: React.FC = () => {
                                       e.stopPropagation();
                                       handleStartEdit(task.entryId, task.taskIndex, 'assignee', task.assignee);
                                     }}
-                                    className="flex items-center gap-1.5 text-sm font-semibold bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 hover:border-indigo-200 transition-colors"
+                                    className="flex items-center gap-1 md:gap-1.5 text-xs md:text-sm font-semibold bg-indigo-50 text-indigo-600 px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 hover:border-indigo-200 transition-colors"
                                   >
                                     <span className="text-indigo-500">@</span>
                                     {task.assignee || 'Asignar'}
@@ -276,7 +280,7 @@ const TaskView: React.FC = () => {
                                         if (e.key === 'Enter') handleSaveEdit();
                                         if (e.key === 'Escape') handleCancelEdit();
                                       }}
-                                      className="text-sm font-semibold bg-white text-orange-600 px-3 py-1.5 rounded-lg border-2 border-orange-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
+                                      className="text-xs md:text-sm font-semibold bg-white text-orange-600 px-2 md:px-3 py-1 md:py-1.5 rounded-lg border-2 border-orange-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
                                       autoFocus
                                     />
                                   </div>
@@ -303,7 +307,7 @@ const TaskView: React.FC = () => {
                                       }
                                       handleStartEdit(task.entryId, task.taskIndex, 'dueDate', currentDate);
                                     }}
-                                    className="flex items-center gap-1.5 text-sm font-semibold text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 hover:border-orange-200 transition-colors"
+                                    className="flex items-center gap-1 md:gap-1.5 text-xs md:text-sm font-semibold text-orange-600 bg-orange-50 px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 hover:border-orange-200 transition-colors"
                                   >
                                     📅 {task.dueDate 
                                       ? (task.dueDate instanceof Date 
@@ -326,7 +330,7 @@ const TaskView: React.FC = () => {
                               </div>
                               
                               {!isExpanded && (
-                                <p className="text-sm text-gray-400 line-clamp-1 italic pl-3 border-l-3 border-gray-200">
+                                <p className="text-xs md:text-sm text-gray-400 line-clamp-1 italic pl-2 md:pl-3 border-l-3 border-gray-200">
                                   "{task.entrySummary}"
                                 </p>
                               )}
@@ -344,16 +348,16 @@ const TaskView: React.FC = () => {
                               transition={{ duration: 0.2 }}
                               className="overflow-hidden border-t border-gray-50"
                             >
-                              <div className="px-5 md:px-6 pb-5 md:pb-6 pt-4 space-y-4">
-                                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Contexto</p>
-                                  <p className="text-base text-gray-700 leading-relaxed">
+                              <div className="px-3 md:px-5 lg:px-6 pb-3 md:pb-5 lg:pb-6 pt-3 md:pt-4 space-y-3 md:space-y-4">
+                                <div className="bg-gray-50 rounded-xl p-3 md:p-4 border border-gray-100">
+                                  <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 md:mb-2">Contexto</p>
+                                  <p className="text-sm md:text-base text-gray-700 leading-relaxed">
                                     {task.entrySummary}
                                   </p>
                                 </div>
                                 
-                                <div className="flex items-center gap-2 text-sm text-gray-500">
-                                  <ICONS.Calendar size={16} />
+                                <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-gray-500">
+                                  <ICONS.Calendar size={14} className="md:w-4 md:h-4" />
                                   <span>
                                     Creada: {new Date(task.entryCreatedAt || 0).toLocaleDateString('es-ES', { 
                                       day: 'numeric', 
@@ -375,19 +379,19 @@ const TaskView: React.FC = () => {
           </div>
           
           {hasMore && (
-            <div className="mt-6 flex justify-center">
+            <div className="mt-4 md:mt-6 flex justify-center">
               <button
                 onClick={loadMore}
-                className="px-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-all shadow-sm"
+                className="px-4 md:px-6 py-2 md:py-3 bg-white border border-gray-200 rounded-xl text-xs md:text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-all shadow-sm"
               >
-                Cargar más ({allTasks.length - paginatedTasks.length} restantes)
+                Cargar más ({allTasks.length - paginatedTasks.length} restantes) ⬇️
               </button>
             </div>
           )}
           
           {!hasMore && allTasks.length > itemsPerPage && (
             <div className="mt-6 text-center text-sm text-gray-400">
-              Mostrando todas las {allTasks.length} {allTasks.length === 1 ? 'misión' : 'misiones'}
+              Mostrando todas las {allTasks.length} {allTasks.length === 1 ? 'misión' : 'misiones'} 📋✨
             </div>
           )}
         </>

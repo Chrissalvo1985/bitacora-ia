@@ -32,7 +32,15 @@ const BookView: React.FC<BookViewProps> = ({ bookId }) => {
   
   const book = books.find(b => b.id === bookId);
   
-  if (!book) return <div>Libreta no encontrada</div>;
+  if (!book) return (
+    <div className="max-w-4xl mx-auto pb-24 md:pb-8 flex items-center justify-center min-h-[60vh]">
+      <div className="text-center">
+        <div className="text-6xl mb-4">📚</div>
+        <p className="text-xl font-bold text-gray-800 mb-2">Libreta no encontrada</p>
+        <p className="text-sm text-gray-500">Parece que esta libreta se fue de paseo... 🚶‍♂️</p>
+      </div>
+    </div>
+  );
 
   // Order priority: TASK > RISK > DECISION > IDEA > NOTE
   const typeOrder: Record<string, number> = {
@@ -185,13 +193,16 @@ const BookView: React.FC<BookViewProps> = ({ bookId }) => {
 
       <div className="flex-1">
          {filteredEntries.length === 0 ? (
-             <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200 mx-1">
+             <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200 mx-1 relative overflow-hidden">
+                 <div className="absolute top-0 right-0 opacity-5 pointer-events-none">
+                   <span className="text-8xl">📝</span>
+                 </div>
                  <ICONS.Book className="mx-auto text-gray-300 mb-2" size={48} />
                  <p className="text-gray-400 font-medium text-lg">
-                   {searchQuery ? 'No se encontraron resultados' : 'Esta libreta está virgen.'}
+                   {searchQuery ? 'Nada por aquí... 🤷‍♂️' : 'Esta libreta está virgen, crack! 📖✨'}
                  </p>
-                 <p className="text-gray-300 text-sm">
-                   {searchQuery ? 'Intenta con otros términos' : 'Empieza a llenarla de ideas.'}
+                 <p className="text-gray-300 text-sm mt-1">
+                   {searchQuery ? 'Intenta con otros términos o palabras clave' : 'Empieza a llenarla de ideas y conquista el mundo! 🚀'}
                  </p>
              </div>
          ) : (
@@ -258,14 +269,14 @@ const BookView: React.FC<BookViewProps> = ({ bookId }) => {
                    onClick={loadMore}
                    className="px-6 py-3 bg-white border border-gray-200 rounded-xl text-base font-semibold text-gray-700 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-all shadow-sm"
                  >
-                   Cargar más ({filteredEntries.length - paginatedEntries.length} restantes)
+                   Cargar más ({filteredEntries.length - paginatedEntries.length} restantes) ⬇️
                  </button>
                </div>
              )}
              
              {!hasMore && filteredEntries.length > itemsPerPage && (
                <div className="mt-6 text-center text-base text-gray-400">
-                 Mostrando todas las {filteredEntries.length} {filteredEntries.length === 1 ? 'entrada' : 'entradas'}
+                 Mostrando todas las {filteredEntries.length} {filteredEntries.length === 1 ? 'entrada' : 'entradas'} 📚✨
                </div>
              )}
            </>
