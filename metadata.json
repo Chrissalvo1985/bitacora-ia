@@ -1,0 +1,7 @@
+{
+  "name": "Bitácora IA",
+  "description": "Tu segundo cerebro digital. Captura ideas, gestiona misiones y pon orden al caos con IA.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
