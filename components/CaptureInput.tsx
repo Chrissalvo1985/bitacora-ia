@@ -319,10 +319,8 @@ const CaptureInput: React.FC = () => {
   };
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === 'pen' || e.pointerType === 'touch') {
-      setIsPenMode(true);
-    }
-    if (isPenMode || e.pointerType === 'pen' || e.pointerType === 'touch') {
+    // Only draw if pen mode is explicitly enabled
+    if (isPenMode) {
       setIsDrawing(true);
       const coords = getCanvasCoordinates(e);
       if (coords) {
@@ -340,7 +338,7 @@ const CaptureInput: React.FC = () => {
   };
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isDrawing && (isPenMode || e.pointerType === 'pen' || e.pointerType === 'touch')) {
+    if (isDrawing && isPenMode) {
       const coords = getCanvasCoordinates(e);
       if (coords) {
         drawOnCanvas(coords.x, coords.y);
@@ -354,17 +352,19 @@ const CaptureInput: React.FC = () => {
   };
 
   const handleCanvasTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    setIsPenMode(true);
-    setIsDrawing(true);
-    const coords = getCanvasCoordinates(e);
-    if (coords) {
-      lastPointRef.current = coords;
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.beginPath();
-          ctx.moveTo(coords.x, coords.y);
+    // Only draw if pen mode is explicitly enabled
+    if (isPenMode) {
+      setIsDrawing(true);
+      const coords = getCanvasCoordinates(e);
+      if (coords) {
+        lastPointRef.current = coords;
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.beginPath();
+            ctx.moveTo(coords.x, coords.y);
+          }
         }
       }
     }
@@ -418,18 +418,16 @@ const CaptureInput: React.FC = () => {
     return () => window.removeEventListener('resize', resizeCanvas);
   }, [isPenMode]);
 
-  // Detect pen/stylus input
-  useEffect(() => {
-    const handlePointerDown = (e: PointerEvent) => {
-      if (e.pointerType === 'pen' || e.pointerType === 'touch') {
-        setIsPenMode(true);
-        setIsExpanded(true);
-      }
-    };
-
-    window.addEventListener('pointerdown', handlePointerDown);
-    return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, []);
+  // Toggle pen mode manually
+  const togglePenMode = () => {
+    if (isPenMode) {
+      setIsPenMode(false);
+      clearCanvas();
+    } else {
+      setIsPenMode(true);
+      setIsExpanded(true);
+    }
+  };
 
   return (
     <div className={`
@@ -527,6 +525,14 @@ const CaptureInput: React.FC = () => {
                     title="Dictar"
                 >
                     <ICONS.Mic size={22} className="md:w-[24px] md:h-[24px] lg:w-[26px] lg:h-[26px]" />
+                </button>
+
+                <button 
+                    onClick={togglePenMode}
+                    className={`p-3 md:p-3.5 lg:p-4 rounded-full transition-all duration-300 ${isPenMode ? 'bg-indigo-500 text-white shadow-lg' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                    title={isPenMode ? "Desactivar modo dibujo" : "Activar modo dibujo"}
+                >
+                    <ICONS.PenTool size={22} className="md:w-[24px] md:h-[24px] lg:w-[26px] lg:h-[26px]" />
                 </button>
 
                 <div className="relative">

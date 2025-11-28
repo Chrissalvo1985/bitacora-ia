@@ -188,21 +188,24 @@ const UserProfileView: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto pb-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Mi Perfil</h1>
-          <p className="text-gray-500">Gestiona tu cuenta y preferencias</p>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Mi Perfil</h1>
+        <p className="text-gray-500">Gestiona tu cuenta y preferencias</p>
       </div>
 
-      {/* Profile Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8"
-      >
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        {/* Left Column - Profile & Security */}
+        <div className="lg:col-span-2 space-y-4 md:space-y-6">
+
+          {/* Profile Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-6"
+          >
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
@@ -319,15 +322,15 @@ const UserProfileView: React.FC = () => {
             </div>
           )}
         </AnimatePresence>
-      </motion.div>
+          </motion.div>
 
-      {/* Password Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8"
-      >
+          {/* Password Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-6"
+          >
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-xl font-bold text-gray-900 mb-1">Seguridad</h2>
@@ -443,81 +446,89 @@ const UserProfileView: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
-
-      {/* Sessions Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8"
-      >
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-1">Sesiones Activas</h2>
-            <p className="text-sm text-gray-500">Gestiona tus sesiones activas</p>
-          </div>
-          <button
-            onClick={loadSessions}
-            disabled={isLoadingSessions}
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            <ICONS.RefreshCw size={18} className={isLoadingSessions ? 'animate-spin' : ''} />
-            Actualizar
-          </button>
+          </motion.div>
         </div>
 
-        {isLoadingSessions ? (
-          <div className="flex items-center justify-center py-8">
-            <ICONS.Loader2 className="animate-spin text-indigo-600" size={24} />
-          </div>
-        ) : sessions.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <ICONS.Shield size={32} className="mx-auto mb-2 opacity-50" />
-            <p>No hay sesiones activas</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <ICONS.Monitor size={16} className="text-gray-400" />
-                    <span className="text-sm font-semibold text-gray-900">
-                      {session.isCurrent ? 'Sesión Actual' : 'Sesión Activa'}
-                    </span>
-                    {session.isCurrent && (
-                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-full">
-                        Actual
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500 space-y-1">
-                    <p>Creada: {formatDate(session.createdAt, "d 'de' MMMM, yyyy 'a las' HH:mm")}</p>
-                    <p>Expira: {formatDate(session.expiresAt, "d 'de' MMMM, yyyy 'a las' HH:mm")}</p>
-                  </div>
-                </div>
-                {!session.isCurrent && (
-                  <button
-                    onClick={() => handleRevokeSession(session.token)}
-                    className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-sm font-semibold hover:bg-rose-100 transition-colors flex items-center gap-1"
-                  >
-                    <ICONS.X size={14} />
-                    Cerrar
-                  </button>
-                )}
+        {/* Right Column - Sessions */}
+        <div className="lg:col-span-1">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-6 h-full flex flex-col"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 mb-1">Sesiones</h2>
+                <p className="text-xs text-gray-500">Activas: {sessions.length}</p>
               </div>
-            ))}
-          </div>
-        )}
-      </motion.div>
+              <button
+                onClick={loadSessions}
+                disabled={isLoadingSessions}
+                className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                title="Actualizar"
+              >
+                <ICONS.RefreshCw size={16} className={isLoadingSessions ? 'animate-spin' : ''} />
+              </button>
+            </div>
 
-      {/* Admin Section */}
+            <div className="flex-1 overflow-y-auto min-h-0 max-h-[600px]">
+              {isLoadingSessions ? (
+                <div className="flex items-center justify-center py-8">
+                  <ICONS.Loader2 className="animate-spin text-indigo-600" size={20} />
+                </div>
+              ) : sessions.length === 0 ? (
+                <div className="text-center py-6 text-gray-500">
+                  <ICONS.Shield size={24} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No hay sesiones</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {sessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className="p-3 bg-gray-50 rounded-xl border border-gray-200"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          <ICONS.Monitor size={14} className="text-gray-400 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-gray-900 truncate">
+                            {session.isCurrent ? 'Actual' : 'Activa'}
+                          </span>
+                          {session.isCurrent && (
+                            <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-semibold rounded-full flex-shrink-0">
+                              Ahora
+                            </span>
+                          )}
+                        </div>
+                        {!session.isCurrent && (
+                          <button
+                            onClick={() => handleRevokeSession(session.token)}
+                            className="p-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100 transition-colors flex-shrink-0"
+                            title="Cerrar sesión"
+                          >
+                            <ICONS.X size={12} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-gray-500 space-y-0.5">
+                        <p className="truncate">Creada: {formatDate(session.createdAt, "d MMM, HH:mm")}</p>
+                        <p className="truncate">Expira: {formatDate(session.expiresAt, "d MMM, HH:mm")}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Admin Section - Full Width Below */}
       {user?.isAdmin && (
-        <AdminUsersSection userId={user.id} />
+        <div className="mt-4 md:mt-6">
+          <AdminUsersSection userId={user.id} />
+        </div>
       )}
     </div>
   );
@@ -580,19 +591,19 @@ const AdminUsersSection: React.FC<{ userId: string }> = ({ userId }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
-      className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8"
+      className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-6"
     >
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-1">Administración de Usuarios</h2>
-          <p className="text-sm text-gray-500">Gestiona usuarios del sistema</p>
+          <h2 className="text-lg font-bold text-gray-900 mb-1">Administración de Usuarios</h2>
+          <p className="text-xs text-gray-500">Gestiona usuarios del sistema</p>
         </div>
         {!isCreatingUser && (
           <button
             onClick={() => setIsCreatingUser(true)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2"
+            className="px-3 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2 text-sm"
           >
-            <ICONS.Plus size={18} />
+            <ICONS.Plus size={16} />
             Crear Usuario
           </button>
         )}
@@ -701,53 +712,53 @@ const AdminUsersSection: React.FC<{ userId: string }> = ({ userId }) => {
       </AnimatePresence>
 
       {/* Users List */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-900">Usuarios ({users.length})</h3>
+      <div className="mt-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-bold text-gray-900">Usuarios ({users.length})</h3>
           <button
             onClick={loadUsers}
             disabled={isLoadingUsers}
-            className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="p-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+            title="Actualizar"
           >
-            <ICONS.RefreshCw size={16} className={isLoadingUsers ? 'animate-spin' : ''} />
-            Actualizar
+            <ICONS.RefreshCw size={14} className={isLoadingUsers ? 'animate-spin' : ''} />
           </button>
         </div>
 
-        {isLoadingUsers ? (
-          <div className="flex items-center justify-center py-8">
-            <ICONS.Loader2 className="animate-spin text-indigo-600" size={24} />
-          </div>
-        ) : users.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <ICONS.Users size={32} className="mx-auto mb-2 opacity-50" />
-            <p>No hay usuarios</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {users.map((u) => (
-              <div
-                key={u.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200"
-              >
-                <div className="flex-1">
+        <div className="max-h-[400px] overflow-y-auto">
+          {isLoadingUsers ? (
+            <div className="flex items-center justify-center py-8">
+              <ICONS.Loader2 className="animate-spin text-indigo-600" size={20} />
+            </div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-6 text-gray-500">
+              <ICONS.Users size={24} className="mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No hay usuarios</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {users.map((u) => (
+                <div
+                  key={u.id}
+                  className="p-3 bg-gray-50 rounded-xl border border-gray-200"
+                >
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-gray-900">{u.name}</span>
+                    <span className="text-sm font-semibold text-gray-900 truncate flex-1">{u.name}</span>
                     {u.isAdmin && (
-                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-full">
+                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-semibold rounded-full flex-shrink-0">
                         Admin
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500">{u.email}</p>
+                  <p className="text-xs text-gray-500 truncate">{u.email}</p>
                   <p className="text-xs text-gray-400 mt-1">
-                    Creado: {formatDate(u.createdAt, "d 'de' MMMM, yyyy")}
+                    {formatDate(u.createdAt, "d MMM, yyyy")}
                   </p>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </motion.div>
   );
