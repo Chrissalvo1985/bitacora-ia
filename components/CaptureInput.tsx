@@ -1,12 +1,35 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
-import { Attachment } from '../types';
+import { Attachment, NoteType, TaskItem } from '../types';
 import DocumentInsightsModal from './DocumentInsightsModal';
 import AnalysisSummaryModal from './AnalysisSummaryModal';
+import MultiTopicSummaryModal from './MultiTopicSummaryModal';
 import { DocumentInsight } from '../services/documentAnalysisService';
 import { motion, AnimatePresence } from 'framer-motion';
 import { extractTextFromPDF } from '../services/pdfService';
+
+// Multi-topic result type
+interface MultiTopicModalData {
+  isMultiTopic: boolean;
+  topics: Array<{
+    bookName: string;
+    bookId: string;
+    type: NoteType;
+    summary: string;
+    tasks: TaskItem[];
+    entities: { name: string; type: string }[];
+    isNewBook: boolean;
+    entryId: string;
+    taskActions: Array<{
+      action: 'complete' | 'update';
+      taskDescription: string;
+      completionNotes?: string;
+    }>;
+  }>;
+  overallContext: string;
+  completedTasks: number;
+}
 
 // Analysis progress states
 type AnalysisStep = 'idle' | 'reading' | 'analyzing' | 'classifying' | 'extracting' | 'complete';
@@ -93,6 +116,8 @@ const CaptureInput: React.FC = () => {
   const [fileError, setFileError] = useState<string | null>(null);
   const [showInsightsModal, setShowInsightsModal] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [showMultiTopicModal, setShowMultiTopicModal] = useState(false);
+  const [multiTopicData, setMultiTopicData] = useState<MultiTopicModalData | null>(null);
   const [documentInsights, setDocumentInsights] = useState<DocumentInsight[]>([]);
   const [currentFileName, setCurrentFileName] = useState('');
   const [analysisSummary, setAnalysisSummary] = useState<any>(null);
@@ -311,6 +336,13 @@ const CaptureInput: React.FC = () => {
         const result = await runAnalysisWithProgress('', drawingAttachment);
         setIsExpanded(false);
         
+        // Handle multi-topic result
+        if (result && 'multiTopicResult' in result && result.multiTopicResult) {
+          setMultiTopicData(result.multiTopicResult);
+          setShowMultiTopicModal(true);
+          return;
+        }
+        
         if (result && 'analysisSummary' in result && result.analysisSummary) {
           const summary = result.analysisSummary as any;
           if (summary.tempEntryId) {
@@ -349,7 +381,14 @@ const CaptureInput: React.FC = () => {
     const result = await runAnalysisWithProgress(contentText, contentAttachment);
     setIsExpanded(false);
     
-    // If there's an analysis summary, show summary modal first
+    // Handle multi-topic result (new flow)
+    if (result && 'multiTopicResult' in result && result.multiTopicResult) {
+      setMultiTopicData(result.multiTopicResult);
+      setShowMultiTopicModal(true);
+      return;
+    }
+    
+    // Legacy: If there's an analysis summary, show summary modal first
     if (result && 'analysisSummary' in result && result.analysisSummary) {
       const summary = result.analysisSummary as any;
       if (summary.tempEntryId) {
@@ -787,6 +826,21 @@ const CaptureInput: React.FC = () => {
           onClose={handleCancelSummary}
           onConfirm={handleConfirmSummary}
           analysis={analysisSummary}
+        />
+      )}
+
+      {/* Multi-Topic Summary Modal */}
+      {showMultiTopicModal && multiTopicData && (
+        <MultiTopicSummaryModal
+          isOpen={showMultiTopicModal}
+          onClose={() => {
+            setShowMultiTopicModal(false);
+            setMultiTopicData(null);
+          }}
+          isMultiTopic={multiTopicData.isMultiTopic}
+          topics={multiTopicData.topics}
+          overallContext={multiTopicData.overallContext}
+          completedTasks={multiTopicData.completedTasks}
         />
       )}
 

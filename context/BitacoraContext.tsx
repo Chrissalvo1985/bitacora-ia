@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
-import { Book, Entry, EntryStatus, NoteType, TaskItem, Attachment, SearchFilters, WeeklySummary, Folder } from '../types';
-import { analyzeEntry, updateBookContext, generateSummary, queryBitacora } from '../services/openaiService';
+import { Book, Entry, EntryStatus, NoteType, TaskItem, Attachment, SearchFilters, WeeklySummary, Folder, MultiTopicAnalysis, TopicEntry, Entity } from '../types';
+import { analyzeEntry, updateBookContext, generateSummary, queryBitacora, analyzeMultiTopicEntry } from '../services/openaiService';
 import { analyzeDocument, DocumentInsight } from '../services/documentAnalysisService';
 import { findRelatedEntry } from '../services/entryMatchingService';
 import * as dataService from '../services/dataService';
@@ -11,6 +11,28 @@ import { CacheService, CACHE_KEYS } from '../services/cacheService';
 // Simple ID generator
 const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
+// Result type for multi-topic analysis
+interface MultiTopicResult {
+  isMultiTopic: boolean;
+  topics: Array<{
+    bookName: string;
+    bookId: string;
+    type: NoteType;
+    summary: string;
+    tasks: TaskItem[];
+    entities: { name: string; type: string }[];
+    isNewBook: boolean;
+    entryId: string;
+    taskActions: Array<{
+      action: 'complete' | 'update';
+      taskDescription: string;
+      completionNotes?: string;
+    }>;
+  }>;
+  overallContext: string;
+  completedTasks: number;
+}
+
 interface BitacoraContextType {
   books: Book[];
   folders: Folder[];
@@ -20,6 +42,7 @@ interface BitacoraContextType {
   addEntry: (text: string, attachment?: Attachment, skipSummaryModal?: boolean) => Promise<{ 
     shouldShowModal?: boolean; 
     insights?: DocumentInsight[];
+    multiTopicResult?: MultiTopicResult;
     analysisSummary?: {
       bookName: string;
       bookId?: string;
@@ -139,6 +162,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
   ): Promise<{ 
     shouldShowModal?: boolean; 
     insights?: DocumentInsight[];
+    multiTopicResult?: MultiTopicResult;
     analysisSummary?: {
       bookName: string;
       bookId?: string;
@@ -154,78 +178,8 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     setIsLoading(true);
-    const tempId = generateId(); // Define outside try for error handling
     
     try {
-      // 1. Check if this is an update to existing content (only if no attachment)
-      if (!attachment && text.trim()) {
-        const allTasks = entries.flatMap(e => e.tasks.map((t, idx) => ({ ...t, entryId: e.id, taskIndex: idx })));
-        const match = await findRelatedEntry(text, entries, allTasks);
-        
-        if (match.shouldUpdate && match.taskToUpdate) {
-          // Update existing task
-          const entry = entries.find(e => e.id === match.taskToUpdate!.entryId);
-          if (entry) {
-            const updatedTasks = [...entry.tasks];
-            updatedTasks[match.taskToUpdate.taskIndex] = {
-              ...updatedTasks[match.taskToUpdate.taskIndex],
-              isDone: true,
-              completionNotes: match.completionNotes || undefined
-            };
-            
-            // Update in UI
-            setEntries(prev => prev.map(e => 
-              e.id === entry.id ? { ...e, tasks: updatedTasks } : e
-            ));
-            
-            // Update in DB
-            if (updatedTasks[match.taskToUpdate.taskIndex].id) {
-              await dataService.updateTaskStatus(
-                updatedTasks[match.taskToUpdate.taskIndex].id!,
-                true,
-                match.completionNotes
-              );
-            }
-            
-            // Refresh to ensure sync
-            await refreshData();
-            
-            setIsLoading(false);
-            return; // Don't create new entry
-          }
-        }
-      }
-
-      // 2. If there's an attachment, analyze it deeply
-      let documentInsights: DocumentInsight[] = [];
-      if (attachment) {
-        const allTasks = entries.flatMap(e => e.tasks.map((t, idx) => ({ ...t, entryId: e.id, taskIndex: idx })));
-        const docAnalysis = await analyzeDocument(
-          text,
-          attachment,
-          entries,
-          books,
-          allTasks
-        );
-        documentInsights = docAnalysis.insights;
-      }
-
-      // 3. Create a temporary processing entry (attachment is only for AI context, not stored)
-      const tempEntry: Entry = {
-        id: tempId,
-        originalText: text,
-        createdAt: Date.now(),
-        bookId: 'processing',
-        type: NoteType.NOTE,
-        summary: 'La IA está pensando...',
-        tasks: [],
-        entities: [],
-        status: EntryStatus.PROCESSING
-      };
-
-      setEntries(prev => [tempEntry, ...prev]);
-
-      // 4. Call OpenAI Analysis
       // Log attachment info for debugging
       if (attachment) {
         console.log('📎 Attachment info:', {
@@ -233,133 +187,230 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
           fileName: attachment.fileName,
           hasExtractedText: !!attachment.extractedText,
           extractedTextLength: attachment.extractedText?.length || 0,
-          extractedTextPreview: attachment.extractedText?.substring(0, 100) || 'N/A'
         });
       }
-      
-      const analysis = await analyzeEntry(text, books, attachment);
 
-      // 3. Find or Create Book - Improved matching
-      // First try exact match (case insensitive)
-      let targetBook = books.find(b => b.name.toLowerCase().trim() === analysis.targetBookName.toLowerCase().trim());
-      
-      // If no exact match, try fuzzy matching based on context and keywords
-      if (!targetBook) {
-        const analysisLower = analysis.targetBookName.toLowerCase();
-        const analysisKeywords = analysisLower.split(/\s+/).filter(w => w.length > 2);
+      // Get all existing tasks for context
+      const allExistingTasks = entries.flatMap(e => e.tasks.map((t, idx) => ({ 
+        ...t, 
+        entryId: e.id, 
+        taskIndex: idx 
+      })));
+
+      // ============================================
+      // USE MULTI-TOPIC ANALYSIS
+      // ============================================
+      console.log('🔍 Analyzing with multi-topic detection...');
+      const multiTopicAnalysis = await analyzeMultiTopicEntry(
+        text, 
+        books, 
+        allExistingTasks,
+        attachment
+      );
+
+      console.log('📊 Multi-topic analysis result:', {
+        isMultiTopic: multiTopicAnalysis.isMultiTopic,
+        topicsCount: multiTopicAnalysis.topics.length,
+        topics: multiTopicAnalysis.topics.map(t => t.targetBookName)
+      });
+
+      // Process each topic and create entries
+      const processedTopics: MultiTopicResult['topics'] = [];
+      const newEntries: Entry[] = [];
+      const newBooks: Book[] = [];
+      let completedTasksCount = 0;
+
+      for (const topic of multiTopicAnalysis.topics) {
+        const entryId = generateId();
         
-        // Try to find by keywords in name or context
-        targetBook = books.find(b => {
-          const bookNameLower = b.name.toLowerCase();
-          const bookContextLower = (b.context || '').toLowerCase();
-          
-          // Check if keywords match book name or context
-          const nameMatch = analysisKeywords.some(kw => bookNameLower.includes(kw));
-          const contextMatch = analysisKeywords.some(kw => bookContextLower.includes(kw));
-          
-          // Also check if book name is contained in analysis or vice versa
-          const containsMatch = bookNameLower.includes(analysisLower) || analysisLower.includes(bookNameLower);
-          
-          return nameMatch || contextMatch || containsMatch;
-        });
-      }
-      
-      let targetBookId = targetBook?.id;
-      
-      if (!targetBook) {
-        // Create new book
-        targetBookId = generateId();
-        targetBook = {
-          id: targetBookId,
-          name: analysis.targetBookName,
-          createdAt: Date.now(),
-          context: 'Nuevo tema detectado.'
-        };
-        setBooks(prev => [...prev, targetBook!]);
+        // Find or create book for this topic
+        let targetBook = books.find(b => 
+          b.name.toLowerCase().trim() === topic.targetBookName.toLowerCase().trim()
+        );
         
-        // Save to DB
-        try {
-          await dataService.createBook(targetBookId, user.id, analysis.targetBookName, undefined, 'Nuevo tema detectado.');
-        } catch (error) {
-          console.error('Error creating book in DB:', error);
+        // Try fuzzy match if exact match fails
+        if (!targetBook) {
+          const topicLower = topic.targetBookName.toLowerCase();
+          const topicKeywords = topicLower.split(/\s+/).filter(w => w.length > 2);
+          
+          targetBook = books.find(b => {
+            const bookNameLower = b.name.toLowerCase();
+            const bookContextLower = (b.context || '').toLowerCase();
+            const nameMatch = topicKeywords.some(kw => bookNameLower.includes(kw));
+            const contextMatch = topicKeywords.some(kw => bookContextLower.includes(kw));
+            const containsMatch = bookNameLower.includes(topicLower) || topicLower.includes(bookNameLower);
+            return nameMatch || contextMatch || containsMatch;
+          });
         }
-      } else {
-        targetBookId = targetBook.id;
-      }
+        
+        let targetBookId = targetBook?.id;
+        let isNewBook = false;
+        
+        if (!targetBook) {
+          // Create new book
+          targetBookId = generateId();
+          targetBook = {
+            id: targetBookId,
+            name: topic.targetBookName,
+            createdAt: Date.now(),
+            context: `Tema detectado desde: "${multiTopicAnalysis.overallContext.slice(0, 100)}..."`
+          };
+          newBooks.push(targetBook);
+          isNewBook = true;
+        }
 
-      // 4. Prepare analysis summary
-      const analysisSummary = {
-        bookName: analysis.targetBookName,
-        bookId: targetBookId,
-        type: analysis.type,
-        summary: analysis.summary,
-        tasks: analysis.tasks.map(t => ({ 
-          ...t, 
-          isDone: false,
-          priority: (t.priority as any) || 'MEDIUM' as any
-        })),
-        entities: analysis.entities.map(e => ({ name: e.name, type: e.type as any })),
-        isNewBook: !targetBook,
-        tempEntryId: tempId
-      };
-
-      // 5. If skipSummaryModal, save directly. Otherwise, show modal first
-      if (skipSummaryModal) {
-        const finalEntry: Entry = {
-          ...tempEntry,
+        // Create entry for this topic
+        const entry: Entry = {
+          id: entryId,
+          originalText: topic.content,
+          createdAt: Date.now(),
           bookId: targetBookId!,
-          type: analysis.type,
-          summary: analysis.summary,
-          tasks: analysisSummary.tasks,
-          entities: analysisSummary.entities,
+          type: topic.type as NoteType,
+          summary: topic.summary,
+          tasks: topic.tasks.map(t => ({
+            description: t.description,
+            assignee: t.assignee,
+            dueDate: t.dueDate,
+            priority: (t.priority as any) || 'MEDIUM',
+            isDone: false
+          })),
+          entities: topic.entities.map(e => ({
+            name: e.name,
+            type: e.type as any
+          })),
           status: EntryStatus.COMPLETED
         };
 
-        // Save entry (attachment is only used for AI context, not stored)
-        await dataService.saveEntry(finalEntry, user.id, analysis);
-        setEntries(prev => prev.map(e => e.id === tempId ? finalEntry : e));
-        
-        // Refresh to get proper task IDs from DB
-        await refreshData();
+        newEntries.push(entry);
 
-        updateBookContext(targetBook.name, targetBook.context, analysis.summary).then(newContext => {
-          setBooks(prevBooks => prevBooks.map(b => 
-            b.id === targetBookId ? { ...b, context: newContext } : b
-          ));
-        });
-
-        if (documentInsights.length > 0) {
-          setIsLoading(false);
-          return { shouldShowModal: true, insights: documentInsights };
+        // Process task actions (complete existing tasks)
+        for (const action of topic.taskActions || []) {
+          if (action.action === 'complete') {
+            // Find matching task to complete
+            const matchingTask = allExistingTasks.find(t => 
+              t.description.toLowerCase().includes(action.taskDescription.toLowerCase()) ||
+              action.taskDescription.toLowerCase().includes(t.description.toLowerCase())
+            );
+            
+            if (matchingTask && !matchingTask.isDone) {
+              console.log(`✅ Completing task: "${matchingTask.description}"`);
+              
+              // Update in memory
+              setEntries(prev => prev.map(e => {
+                if (e.id === matchingTask.entryId) {
+                  const updatedTasks = [...e.tasks];
+                  updatedTasks[matchingTask.taskIndex] = {
+                    ...updatedTasks[matchingTask.taskIndex],
+                    isDone: true,
+                    completionNotes: action.completionNotes || 'Completado según nota de actualización'
+                  };
+                  return { ...e, tasks: updatedTasks };
+                }
+                return e;
+              }));
+              
+              // Update in DB
+              if (matchingTask.id) {
+                await dataService.updateTaskStatus(
+                  matchingTask.id,
+                  true,
+                  action.completionNotes
+                );
+              }
+              
+              completedTasksCount++;
+            }
+          }
         }
-      } else {
-        // Show summary modal first
-        setIsLoading(false);
-        return { 
-          analysisSummary: {
-            ...analysisSummary,
-            tempEntryId: tempId
-          },
-          shouldShowModal: documentInsights.length > 0,
-          insights: documentInsights
-        };
+
+        processedTopics.push({
+          bookName: targetBook.name,
+          bookId: targetBookId!,
+          type: topic.type as NoteType,
+          summary: topic.summary,
+          tasks: entry.tasks,
+          entities: topic.entities,
+          isNewBook,
+          entryId,
+          taskActions: topic.taskActions || []
+        });
       }
 
-    } catch (error) {
-      console.error(error);
-      setEntries(prev => prev.map(e => {
-        if (e.id === tempId) {
-          return {
-            ...e,
-            status: EntryStatus.ERROR,
-            summary: 'Ups, algo falló al procesar. Guardado en crudo.',
-            bookId: 'inbox'
-          };
+      // Save new books to DB
+      for (const book of newBooks) {
+        try {
+          await dataService.createBook(book.id, user.id, book.name, undefined, book.context);
+        } catch (error) {
+          console.error('Error creating book in DB:', error);
         }
-        return e;
-      }));
-    } finally {
+      }
+
+      // Update books state
+      if (newBooks.length > 0) {
+        setBooks(prev => [...prev, ...newBooks]);
+      }
+
+      // Save all entries to DB and update state
+      for (const entry of newEntries) {
+        try {
+          const analysis = {
+            targetBookName: processedTopics.find(t => t.entryId === entry.id)?.bookName || '',
+            type: entry.type,
+            summary: entry.summary,
+            tasks: entry.tasks,
+            entities: entry.entities,
+            suggestedPriority: multiTopicAnalysis.suggestedPriority
+          };
+          await dataService.saveEntry(entry, user.id, analysis);
+        } catch (error) {
+          console.error('Error saving entry to DB:', error);
+        }
+      }
+
+      // Update entries state
+      setEntries(prev => [...newEntries, ...prev]);
+
+      // Refresh to get proper task IDs
+      await refreshData();
+
+      // Update book contexts in background
+      for (const topic of processedTopics) {
+        const book = [...books, ...newBooks].find(b => b.id === topic.bookId);
+        if (book) {
+          updateBookContext(book.name, book.context, topic.summary).then(newContext => {
+            setBooks(prevBooks => prevBooks.map(b => 
+              b.id === topic.bookId ? { ...b, context: newContext } : b
+            ));
+          });
+        }
+      }
+
+      // Build result
+      const multiTopicResult: MultiTopicResult = {
+        isMultiTopic: multiTopicAnalysis.isMultiTopic,
+        topics: processedTopics,
+        overallContext: multiTopicAnalysis.overallContext,
+        completedTasks: completedTasksCount
+      };
+
+      console.log('✅ Multi-topic processing complete:', {
+        entriesCreated: newEntries.length,
+        booksCreated: newBooks.length,
+        tasksCompleted: completedTasksCount
+      });
+
       setIsLoading(false);
+      
+      // Always return the multi-topic result so the UI can show what happened
+      return {
+        shouldShowModal: true,
+        multiTopicResult
+      };
+
+    } catch (error) {
+      console.error('Error in addEntry:', error);
+      setIsLoading(false);
+      throw error;
     }
   };
 
