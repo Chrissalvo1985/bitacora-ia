@@ -9,6 +9,7 @@ import AIQueryView from './components/AIQueryView';
 import UserProfileView from './components/UserProfileView';
 import LoginView from './components/LoginView';
 import BooksMenu from './components/BooksMenu';
+import NotificationManager from './components/NotificationManager';
 import { ICONS } from './constants';
 import { BitacoraProvider, useBitacora } from './context/BitacoraContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -119,6 +120,9 @@ const Layout = () => {
 
   return (
     <div className="flex h-[100dvh] bg-slate-50 font-sans text-slate-900 overflow-hidden selection:bg-indigo-100 selection:text-indigo-700">
+      {/* Smart Notification Manager */}
+      <NotificationManager />
+      
       <Sidebar 
         activeView={activeView} 
         setActiveView={setActiveView} 
@@ -127,29 +131,29 @@ const Layout = () => {
       />
       
       <main className="flex-1 flex flex-col h-full overflow-hidden w-full relative bg-[#f8fafc]">
-        {/* Mobile Header - Fixed */}
-        <div className="md:hidden bg-white/90 backdrop-blur-md flex-shrink-0 z-40 px-5 py-3 flex items-center justify-between border-b border-gray-100 safe-top">
+        {/* Mobile Header - Sticky with safe area */}
+        <header className="md:hidden sticky top-0 bg-white/95 backdrop-blur-xl flex-shrink-0 z-40 px-4 py-3 flex items-center justify-between border-b border-gray-100/80 shadow-sm" style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
           <div className="flex items-center gap-2.5">
             <div className="bg-gradient-to-tr from-indigo-600 to-purple-600 p-1.5 rounded-lg shadow-sm">
                 <ICONS.Book size={18} className="text-white" />
             </div>
             <span className="font-extrabold text-xl text-gray-900 tracking-tight">Bitácora</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setIsBooksMenuOpen(true)}
-              className="relative p-2 hover:bg-gray-100 rounded-xl transition-colors"
+              className="relative p-2.5 hover:bg-gray-100 active:bg-gray-200 rounded-xl transition-colors"
             >
               <ICONS.Library size={22} className="text-gray-600" />
               {books.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
                   {books.length > 9 ? '9+' : books.length}
                 </span>
               )}
             </button>
             <button
               onClick={() => setActiveView('profile')}
-              className={`w-9 h-9 rounded-full flex items-center justify-center border shadow-sm transition-all ${
+              className={`w-9 h-9 rounded-full flex items-center justify-center border shadow-sm transition-all active:scale-95 ${
                 activeView === 'profile'
                   ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-200'
                   : 'bg-gradient-to-br from-indigo-500 to-purple-500 border-gray-200'
@@ -162,10 +166,10 @@ const Layout = () => {
               </span>
             </button>
           </div>
-        </div>
+        </header>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto w-full max-w-5xl mx-auto px-5 md:px-8 pt-4 md:pt-8 scroll-smooth no-scrollbar pb-24 md:pb-8">
+        <div className="flex-1 overflow-y-auto overscroll-none w-full max-w-5xl mx-auto px-4 md:px-8 pt-4 md:pt-8 scroll-smooth no-scrollbar pb-24 md:pb-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeView}

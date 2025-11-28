@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
 import { ICONS } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const AIQueryView: React.FC = () => {
+const AIQueryView: React.FC = memo(() => {
   const { queryAI, entries } = useBitacora();
   
   // Check if there are any entries
@@ -12,12 +12,12 @@ const AIQueryView: React.FC = () => {
   const [response, setResponse] = useState<string | null>(null);
   const [isQuerying, setIsQuerying] = useState(false);
 
-  const handleQuery = async () => {
+  const handleQuery = useCallback(async () => {
     if (!query.trim()) return;
 
     const currentQuery = query.trim();
     setIsQuerying(true);
-    setResponse(null); // Limpiar respuesta anterior mientras se procesa
+    setResponse(null);
     
     try {
       const answer = await queryAI(currentQuery);
@@ -28,14 +28,14 @@ const AIQueryView: React.FC = () => {
     } finally {
       setIsQuerying(false);
     }
-  };
+  }, [query, queryAI]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleQuery();
     }
-  };
+  }, [handleQuery]);
 
   return (
     <div className="max-w-4xl mx-auto pb-24 md:pb-8">
@@ -128,7 +128,9 @@ const AIQueryView: React.FC = () => {
       </AnimatePresence>
     </div>
   );
-};
+});
+
+AIQueryView.displayName = 'AIQueryView';
 
 export default AIQueryView;
 

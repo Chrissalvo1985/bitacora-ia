@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
 import EntryCard from './EntryCard';
 import { ICONS, TYPE_STYLES, TYPE_ICONS, TYPE_LABELS } from '../constants';
@@ -12,7 +12,7 @@ interface BookViewProps {
 const ITEMS_PER_PAGE = 20;
 const ITEMS_PER_PAGE_MOBILE = 10;
 
-const BookView: React.FC<BookViewProps> = ({ bookId }) => {
+const BookView: React.FC<BookViewProps> = memo(({ bookId }) => {
   const { books, entries } = useBitacora();
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -84,11 +84,11 @@ const BookView: React.FC<BookViewProps> = ({ bookId }) => {
   const paginatedEntries = filteredEntries.slice(0, currentPage * itemsPerPage);
   const hasMore = paginatedEntries.length < filteredEntries.length;
 
-  const loadMore = () => {
+  const loadMore = useCallback(() => {
     if (hasMore) {
       setCurrentPage(prev => prev + 1);
     }
-  };
+  }, [hasMore]);
 
   return (
     <div className="max-w-7xl mx-auto h-full flex flex-col pb-28 md:pb-8">
@@ -284,6 +284,8 @@ const BookView: React.FC<BookViewProps> = ({ bookId }) => {
       </div>
     </div>
   );
-};
+});
+
+BookView.displayName = 'BookView';
 
 export default BookView;

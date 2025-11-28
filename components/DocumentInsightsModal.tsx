@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ICONS } from '../constants';
 import { DocumentInsight } from '../services/documentAnalysisService';
@@ -11,16 +11,14 @@ interface DocumentInsightsModalProps {
   fileName: string;
 }
 
-const DocumentInsightsModal: React.FC<DocumentInsightsModalProps> = ({
+const DocumentInsightsModal: React.FC<DocumentInsightsModalProps> = memo(({
   isOpen,
   onClose,
   insights,
   onAction,
   fileName,
 }) => {
-  if (!isOpen) return null;
-
-  const getInsightIcon = (type: string) => {
+  const getInsightIcon = useCallback((type: string) => {
     switch (type) {
       case 'task':
         return <ICONS.ListTodo size={20} className="text-blue-600" />;
@@ -37,9 +35,9 @@ const DocumentInsightsModal: React.FC<DocumentInsightsModalProps> = ({
       default:
         return <ICONS.StickyNote size={20} className="text-gray-600" />;
     }
-  };
+  }, []);
 
-  const getInsightColor = (type: string) => {
+  const getInsightColor = useCallback((type: string) => {
     switch (type) {
       case 'task':
         return 'bg-blue-50 border-blue-200';
@@ -56,9 +54,9 @@ const DocumentInsightsModal: React.FC<DocumentInsightsModalProps> = ({
       default:
         return 'bg-gray-50 border-gray-200';
     }
-  };
+  }, []);
 
-  const getActionLabel = (insight: DocumentInsight) => {
+  const getActionLabel = useCallback((insight: DocumentInsight) => {
     if (!insight.action) return null;
     
     switch (insight.action.type) {
@@ -75,7 +73,9 @@ const DocumentInsightsModal: React.FC<DocumentInsightsModalProps> = ({
       default:
         return 'Aplicar';
     }
-  };
+  }, []);
+
+  if (!isOpen) return null;
 
   return (
     <AnimatePresence>
@@ -188,7 +188,9 @@ const DocumentInsightsModal: React.FC<DocumentInsightsModalProps> = ({
       )}
     </AnimatePresence>
   );
-};
+});
+
+DocumentInsightsModal.displayName = 'DocumentInsightsModal';
 
 export default DocumentInsightsModal;
 

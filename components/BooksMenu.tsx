@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, memo, useMemo } from 'react';
 import { ICONS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -111,7 +111,7 @@ const FolderHeader: React.FC<{
   );
 };
 
-// Component for book options menu (move to folder + rename)
+// Component for book options menu (move to folder + rename) - Mobile-friendly bottom sheet style
 const BookOptionsMenu: React.FC<{ 
   book: Book; 
   folders: Folder[]; 
@@ -119,152 +119,226 @@ const BookOptionsMenu: React.FC<{
   onRename: (bookId: string, newName: string) => Promise<void>;
 }> = ({ book, folders, onMoveToFolder, onRename }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isRenaming, setIsRenaming] = useState(false);
+  const [activeSection, setActiveSection] = useState<'main' | 'rename' | 'move'>('main');
   const [newName, setNewName] = useState(book.name);
-  const [showFolderMenu, setShowFolderMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        setIsRenaming(false);
-        setShowFolderMenu(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isRenaming && inputRef.current) {
+    if (activeSection === 'rename' && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
     }
-  }, [isRenaming]);
+  }, [activeSection]);
 
   const handleMoveToFolder = async (folderId: string | null) => {
     await onMoveToFolder(book.id, folderId);
     setIsOpen(false);
-    setShowFolderMenu(false);
+    setActiveSection('main');
   };
 
   const handleRename = async () => {
     if (newName.trim() && newName.trim() !== book.name) {
       await onRename(book.id, newName.trim());
     }
-    setIsRenaming(false);
     setIsOpen(false);
+    setActiveSection('main');
+  };
+
+  const closeMenu = () => {
+    setIsOpen(false);
+    setActiveSection('main');
+    setNewName(book.name);
   };
 
   return (
-    <div className="relative" ref={menuRef}>
+    <>
       <button
         onClick={(e) => {
           e.stopPropagation();
-          setIsOpen(!isOpen);
+          setIsOpen(true);
         }}
-        className="p-1.5 hover:bg-white/80 rounded-lg transition-colors text-gray-400 hover:text-indigo-600"
+        className="p-1.5 hover:bg-white/80 active:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-indigo-600"
         title="Opciones"
       >
         <ICONS.Menu size={14} />
       </button>
       
-      {isOpen && !isRenaming && (
-        <div className="absolute right-0 top-8 z-50 bg-white rounded-xl shadow-lg border border-gray-200 py-2 min-w-[180px]">
-          {/* Rename option */}
-          <button
-            onClick={() => {
-              setNewName(book.name);
-              setIsRenaming(true);
-            }}
-            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
-          >
-            <ICONS.PenTool size={14} className="text-gray-400" />
-            Renombrar
-          </button>
-          
-          {/* Move to folder option */}
-          <div className="relative">
-            <button
-              onClick={() => setShowFolderMenu(!showFolderMenu)}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <ICONS.ArrowRight size={14} className="text-gray-400" />
-                Mover a carpeta
-              </div>
-              <ICONS.ChevronRight size={14} className="text-gray-400" />
-            </button>
+      {/* Full-screen overlay menu - mobile friendly */}
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeMenu}
+              className="fixed inset-0 bg-black/50 z-[100]"
+            />
             
-            {showFolderMenu && (
-              <div className="absolute left-full top-0 ml-1 bg-white rounded-xl shadow-lg border border-gray-200 py-2 min-w-[160px]">
-                <button
-                  onClick={() => handleMoveToFolder(null)}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
-                >
-                  <ICONS.Book size={14} className="text-gray-400" />
-                  Sin carpeta
-                </button>
-                {folders.map((folder) => (
-                  <button
-                    key={folder.id}
-                    onClick={() => handleMoveToFolder(folder.id)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <div 
-                      className="w-3 h-3 rounded"
-                      style={{ backgroundColor: folder.color || '#9333ea' }}
-                    />
-                    {folder.name}
-                  </button>
-                ))}
+            {/* Bottom Sheet Menu */}
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="fixed bottom-0 left-0 right-0 z-[100] bg-white rounded-t-3xl shadow-2xl max-h-[70vh] overflow-hidden"
+              style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}
+            >
+              {/* Handle bar */}
+              <div className="flex justify-center py-3">
+                <div className="w-10 h-1 bg-gray-300 rounded-full" />
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Rename input */}
-      {isOpen && isRenaming && (
-        <div className="absolute right-0 top-8 z-50 bg-white rounded-xl shadow-lg border border-gray-200 p-3 min-w-[220px]">
-          <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Renombrar libreta</p>
-          <input
-            ref={inputRef}
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleRename()}
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm mb-2"
-          />
-          <div className="flex gap-2">
-            <button
-              onClick={handleRename}
-              className="flex-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors"
-            >
-              Guardar
-            </button>
-            <button
-              onClick={() => {
-                setIsRenaming(false);
-                setIsOpen(false);
-              }}
-              className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 transition-colors"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+              
+              {/* Header */}
+              <div className="px-5 pb-3 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 rounded-xl">
+                      <ICONS.Book size={18} className="text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900 text-base">{book.name}</p>
+                      <p className="text-xs text-gray-500">Opciones de libreta</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={closeMenu}
+                    className="p-2 hover:bg-gray-100 rounded-xl"
+                  >
+                    <ICONS.X size={20} className="text-gray-500" />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Content */}
+              <div className="p-4 overflow-y-auto max-h-[50vh]">
+                {activeSection === 'main' && (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        setNewName(book.name);
+                        setActiveSection('rename');
+                      }}
+                      className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                    >
+                      <div className="p-2.5 bg-gray-100 rounded-xl">
+                        <ICONS.PenTool size={18} className="text-gray-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-semibold text-gray-900">Renombrar</p>
+                        <p className="text-xs text-gray-500">Cambiar nombre de la libreta</p>
+                      </div>
+                    </button>
+                    
+                    <button
+                      onClick={() => setActiveSection('move')}
+                      className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                    >
+                      <div className="p-2.5 bg-purple-100 rounded-xl">
+                        <ICONS.ArrowRight size={18} className="text-purple-600" />
+                      </div>
+                      <div className="text-left flex-1">
+                        <p className="font-semibold text-gray-900">Mover a carpeta</p>
+                        <p className="text-xs text-gray-500">Organizar en una carpeta</p>
+                      </div>
+                      <ICONS.ChevronRight size={18} className="text-gray-400" />
+                    </button>
+                  </div>
+                )}
+                
+                {activeSection === 'rename' && (
+                  <div className="space-y-4">
+                    <button
+                      onClick={() => setActiveSection('main')}
+                      className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
+                    >
+                      <ICONS.ChevronRight size={16} className="rotate-180" />
+                      Volver
+                    </button>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Nuevo nombre</label>
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleRename()}
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-base"
+                        placeholder="Nombre de la libreta"
+                      />
+                    </div>
+                    
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setActiveSection('main')}
+                        className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 active:bg-gray-300 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleRename}
+                        className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {activeSection === 'move' && (
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => setActiveSection('main')}
+                      className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-2"
+                    >
+                      <ICONS.ChevronRight size={16} className="rotate-180" />
+                      Volver
+                    </button>
+                    
+                    <p className="text-sm font-semibold text-gray-700 mb-3">Selecciona una carpeta</p>
+                    
+                    <button
+                      onClick={() => handleMoveToFolder(null)}
+                      className="w-full flex items-center gap-3 p-4 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors border border-gray-200"
+                    >
+                      <ICONS.Book size={18} className="text-gray-500" />
+                      <span className="font-medium text-gray-700">Sin carpeta</span>
+                    </button>
+                    
+                    {folders.map((folder) => (
+                      <button
+                        key={folder.id}
+                        onClick={() => handleMoveToFolder(folder.id)}
+                        className="w-full flex items-center gap-3 p-4 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors border border-gray-200"
+                      >
+                        <div 
+                          className="w-5 h-5 rounded-lg"
+                          style={{ backgroundColor: folder.color || '#9333ea' }}
+                        />
+                        <span className="font-medium text-gray-700">{folder.name}</span>
+                      </button>
+                    ))}
+                    
+                    {folders.length === 0 && (
+                      <p className="text-center text-sm text-gray-500 py-4">
+                        No hay carpetas creadas
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
   );
 };
 
-const BooksMenu: React.FC<BooksMenuProps> = ({
+const BooksMenu: React.FC<BooksMenuProps> = memo(({
   isOpen,
   onClose,
   activeView,
@@ -279,36 +353,41 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
   const [newFolderName, setNewFolderName] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
-  const filteredBooks = books.filter(book =>
+  const filteredBooks = useMemo(() => books.filter(book =>
     book.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ), [books, searchQuery]);
 
-  // Group books by folder
-  const booksByFolder = books.reduce((acc, book) => {
+  // Group books by folder - memoized
+  const booksByFolder = useMemo(() => books.reduce((acc, book) => {
     const folderId = book.folderId || 'no-folder';
     if (!acc[folderId]) {
       acc[folderId] = [];
     }
     acc[folderId].push(book);
     return acc;
-  }, {} as Record<string, typeof books>);
+  }, {} as Record<string, typeof books>), [books]);
 
-  // Check if there are any books or folders to show
-  const hasBooksWithoutFolder = booksByFolder['no-folder'] && booksByFolder['no-folder'].length > 0;
-  const hasFoldersWithBooks = folders.some(folder => {
-    const folderBooks = booksByFolder[folder.id] || [];
-    if (searchQuery) {
-      const folderMatchesSearch = folder.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const hasMatchingBooks = folderBooks.some(book => 
-        book.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      return folderMatchesSearch || hasMatchingBooks;
-    }
-    return true; // Always show folders even if empty
-  });
-  const hasContentToShow = hasBooksWithoutFolder || folders.length > 0;
+  // Check if there are any books or folders to show - memoized
+  const { hasBooksWithoutFolder, hasContentToShow } = useMemo(() => {
+    const hasBooksWithoutFolder = booksByFolder['no-folder'] && booksByFolder['no-folder'].length > 0;
+    const hasFoldersWithBooks = folders.some(folder => {
+      const folderBooks = booksByFolder[folder.id] || [];
+      if (searchQuery) {
+        const folderMatchesSearch = folder.name.toLowerCase().includes(searchQuery.toLowerCase());
+        const hasMatchingBooks = folderBooks.some(book => 
+          book.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+        return folderMatchesSearch || hasMatchingBooks;
+      }
+      return true;
+    });
+    return {
+      hasBooksWithoutFolder,
+      hasContentToShow: hasBooksWithoutFolder || folders.length > 0
+    };
+  }, [booksByFolder, folders, searchQuery]);
 
-  const handleCreateBook = async () => {
+  const handleCreateBook = useCallback(async () => {
     if (!newBookName.trim()) return;
     try {
       const book = await createBook(newBookName.trim());
@@ -319,9 +398,9 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
     } catch (error) {
       console.error('Error creating book:', error);
     }
-  };
+  }, [newBookName, createBook, onSelectBook, onClose]);
 
-  const handleCreateFolder = async () => {
+  const handleCreateFolder = useCallback(async () => {
     if (!newFolderName.trim()) return;
     try {
       await createFolder(newFolderName.trim());
@@ -330,9 +409,9 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
     } catch (error) {
       console.error('Error creating folder:', error);
     }
-  };
+  }, [newFolderName, createFolder]);
 
-  const toggleFolder = (folderId: string) => {
+  const toggleFolder = useCallback((folderId: string) => {
     setExpandedFolders(prev => {
       const newSet = new Set(prev);
       if (newSet.has(folderId)) {
@@ -342,28 +421,28 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
       }
       return newSet;
     });
-  };
+  }, []);
 
-  const handleSelectBook = (bookId: string) => {
+  const handleSelectBook = useCallback((bookId: string) => {
     onSelectBook(bookId);
     onClose();
-  };
+  }, [onSelectBook, onClose]);
 
-  const handleRenameBook = async (bookId: string, newName: string) => {
+  const handleRenameBook = useCallback(async (bookId: string, newName: string) => {
     try {
       await updateBook(bookId, { name: newName });
     } catch (error) {
       console.error('Error renaming book:', error);
     }
-  };
+  }, [updateBook]);
 
-  const handleRenameFolder = async (folderId: string, newName: string) => {
+  const handleRenameFolder = useCallback(async (folderId: string, newName: string) => {
     try {
       await updateFolder(folderId, { name: newName });
     } catch (error) {
       console.error('Error renaming folder:', error);
     }
-  };
+  }, [updateFolder]);
 
   if (!isOpen) return null;
 
@@ -706,7 +785,9 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
       </motion.div>
     </>
   );
-};
+});
+
+BooksMenu.displayName = 'BooksMenu';
 
 export default BooksMenu;
 

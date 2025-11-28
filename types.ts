@@ -40,6 +40,8 @@ export interface Attachment {
   mimeType: string;
   data: string; // Base64 string
   fileName: string;
+  extractedText?: string; // Text extracted from PDFs
+  originalSize?: number; // Original size before truncation
 }
 
 export interface Entity {
@@ -60,7 +62,7 @@ export interface Entry {
   tasks: TaskItem[];
   entities: Entity[]; // People, companies identified
   
-  attachment?: Attachment; // Optional attachment
+  // Note: Attachments are NOT stored - they're only used as context for AI analysis
 
   status: EntryStatus;
 }

@@ -27,8 +27,7 @@ export function dbBookToBook(dbBook: db.DbBook): Book {
 export function dbEntryToEntry(
   dbEntry: db.DbEntry,
   tasks: TaskItem[],
-  entities: Entity[],
-  attachment?: any
+  entities: Entity[]
 ): Entry {
   return {
     id: dbEntry.id,
@@ -39,7 +38,6 @@ export function dbEntryToEntry(
     summary: dbEntry.summary,
     tasks,
     entities,
-    attachment,
     status: dbEntry.status as EntryStatus,
   };
 }
@@ -116,6 +114,7 @@ export async function loadAllEntries(userId: string): Promise<Entry[]> {
 }
 
 // Save entry with tasks and entities (user-scoped)
+// Note: Attachments are NOT saved - they're only used as context for AI analysis
 export async function saveEntry(
   entry: Entry,
   userId: string,
@@ -146,7 +145,7 @@ export async function saveEntry(
       }
     }
 
-    // Save entry
+    // Save entry (without attachment - attachments are only used for AI context)
     await db.createEntry(
       entry.id,
       userId,

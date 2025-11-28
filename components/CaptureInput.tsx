@@ -5,6 +5,81 @@ import { Attachment } from '../types';
 import DocumentInsightsModal from './DocumentInsightsModal';
 import AnalysisSummaryModal from './AnalysisSummaryModal';
 import { DocumentInsight } from '../services/documentAnalysisService';
+import { motion, AnimatePresence } from 'framer-motion';
+import { extractTextFromPDF } from '../services/pdfService';
+
+// Analysis progress states
+type AnalysisStep = 'idle' | 'reading' | 'analyzing' | 'classifying' | 'extracting' | 'complete';
+
+const ANALYSIS_STEPS: Record<AnalysisStep, { label: string; progress: number; emoji: string }> = {
+  idle: { label: '', progress: 0, emoji: '' },
+  reading: { label: 'Leyendo contenido...', progress: 15, emoji: '📖' },
+  analyzing: { label: 'Analizando con IA...', progress: 40, emoji: '🧠' },
+  classifying: { label: 'Clasificando información...', progress: 70, emoji: '🏷️' },
+  extracting: { label: 'Extrayendo tareas y entidades...', progress: 90, emoji: '✨' },
+  complete: { label: '¡Listo!', progress: 100, emoji: '🎉' },
+};
+
+// Progress Bar Component
+const AnalysisProgressBar: React.FC<{ step: AnalysisStep; hasAttachment: boolean }> = ({ step, hasAttachment }) => {
+  const { label, progress, emoji } = ANALYSIS_STEPS[step];
+  
+  if (step === 'idle') return null;
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="mb-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-100"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <motion.span 
+            animate={{ scale: [1, 1.2, 1] }}
+            transition={{ repeat: Infinity, duration: 1 }}
+            className="text-xl"
+          >
+            {emoji}
+          </motion.span>
+          <span className="text-sm font-semibold text-gray-700">{label}</span>
+        </div>
+        <span className="text-xs font-bold text-indigo-600">{progress}%</span>
+      </div>
+      
+      {/* Progress Bar */}
+      <div className="h-2 bg-white/80 rounded-full overflow-hidden border border-indigo-100">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+          className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+        />
+      </div>
+      
+      {/* Step indicators */}
+      <div className="flex justify-between mt-2 px-1">
+        {['reading', 'analyzing', 'classifying', 'extracting'].map((s, idx) => {
+          const isActive = Object.keys(ANALYSIS_STEPS).indexOf(step) >= Object.keys(ANALYSIS_STEPS).indexOf(s as AnalysisStep);
+          return (
+            <div key={s} className="flex flex-col items-center">
+              <div className={`w-2 h-2 rounded-full transition-colors ${isActive ? 'bg-indigo-500' : 'bg-gray-300'}`} />
+              <span className={`text-[9px] mt-1 font-medium ${isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
+                {idx === 0 ? 'Leer' : idx === 1 ? 'Analizar' : idx === 2 ? 'Clasificar' : 'Extraer'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      
+      {hasAttachment && (
+        <p className="text-[10px] text-gray-500 mt-2 text-center">
+          📎 Procesando documento adjunto...
+        </p>
+      )}
+    </motion.div>
+  );
+};
 
 const CaptureInput: React.FC = () => {
   const [text, setText] = useState('');
@@ -12,6 +87,7 @@ const CaptureInput: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
   const [isPenMode, setIsPenMode] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [analysisStep, setAnalysisStep] = useState<AnalysisStep>('idle');
   const { addEntry, isLoading, updateTaskStatus, refreshData, confirmEntryWithEdits, entries, deleteEntry } = useBitacora();
   const [attachment, setAttachment] = useState<Attachment | undefined>(undefined);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -75,6 +151,8 @@ const CaptureInput: React.FC = () => {
     }
   };
 
+  const [isExtractingText, setIsExtractingText] = useState(false);
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -106,7 +184,7 @@ const CaptureInput: React.FC = () => {
     try {
       const reader = new FileReader();
       
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         try {
           const base64String = reader.result as string;
           if (!base64String) {
@@ -115,11 +193,27 @@ const CaptureInput: React.FC = () => {
           
           const type = isImage ? 'image' : 'document';
           
+          // For PDFs, extract text content
+          let extractedText: string | undefined;
+          if (isPDF) {
+            setIsExtractingText(true);
+            try {
+              extractedText = await extractTextFromPDF(base64String);
+              console.log(`PDF text extracted: ${extractedText.length} chars`);
+            } catch (err) {
+              console.warn('Could not extract PDF text:', err);
+              // Continue without extracted text - the file will still be saved
+            } finally {
+              setIsExtractingText(false);
+            }
+          }
+          
           setAttachment({
             type,
             mimeType: file.type || (isPDF ? 'application/pdf' : 'image/jpeg'),
             data: base64String,
-            fileName: file.name
+            fileName: file.name,
+            extractedText, // Include extracted text for PDFs
           });
           setIsExpanded(true);
           setFileError(null);
@@ -128,6 +222,7 @@ const CaptureInput: React.FC = () => {
           setFileError('Error al procesar el archivo. Intenta de nuevo.');
           if (fileInputRef.current) fileInputRef.current.value = '';
           setTimeout(() => setFileError(null), 5000);
+          setIsExtractingText(false);
         }
       };
 
@@ -158,6 +253,39 @@ const CaptureInput: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Simulate progress steps during analysis
+  const runAnalysisWithProgress = async (contentText: string, contentAttachment?: Attachment) => {
+    const hasAttachment = !!contentAttachment;
+    
+    // Step 1: Reading
+    setAnalysisStep('reading');
+    await new Promise(r => setTimeout(r, 400));
+    
+    // Step 2: Analyzing
+    setAnalysisStep('analyzing');
+    
+    // Start the actual analysis
+    const resultPromise = addEntry(contentText, contentAttachment, false);
+    
+    // Step 3: Classifying (after a delay)
+    setTimeout(() => setAnalysisStep('classifying'), 1500);
+    
+    // Step 4: Extracting (after more delay)
+    setTimeout(() => setAnalysisStep('extracting'), 3000);
+    
+    // Wait for actual result
+    const result = await resultPromise;
+    
+    // Step 5: Complete
+    setAnalysisStep('complete');
+    await new Promise(r => setTimeout(r, 500));
+    
+    // Reset progress
+    setAnalysisStep('idle');
+    
+    return result;
+  };
+
   const handleSubmit = async () => {
     // If in pen mode, convert canvas to image
     if (isPenMode && canvasRef.current) {
@@ -170,19 +298,23 @@ const CaptureInput: React.FC = () => {
           fileName: 'dibujo.png'
         };
         
-        // Reset UI
+        // Reset UI but keep expanded for progress
         clearCanvas();
         setIsPenMode(false);
-        setIsExpanded(false);
         
-        const result = await addEntry('', drawingAttachment, false);
+        const result = await runAnalysisWithProgress('', drawingAttachment);
+        setIsExpanded(false);
         
         if (result && 'analysisSummary' in result && result.analysisSummary) {
           const summary = result.analysisSummary as any;
           if (summary.tempEntryId) {
             setTempEntryId(summary.tempEntryId);
             const { tempEntryId, ...summaryForModal } = summary;
-            setAnalysisSummary(summaryForModal);
+            const enrichedSummary = {
+              ...summaryForModal,
+              documentInsights: result.insights || [],
+            };
+            setAnalysisSummary(enrichedSummary);
             setShowSummaryModal(true);
           }
         }
@@ -201,15 +333,15 @@ const CaptureInput: React.FC = () => {
     const contentAttachment = attachment;
     const fileName = attachment?.fileName || '';
     
-    // Reset UI immediately
+    // Reset input but keep expanded for progress
     setText('');
     setAttachment(undefined);
     if (fileInputRef.current) fileInputRef.current.value = '';
-    setIsExpanded(false);
     setIsPenMode(false);
     clearCanvas();
     
-    const result = await addEntry(contentText, contentAttachment, false);
+    const result = await runAnalysisWithProgress(contentText, contentAttachment);
+    setIsExpanded(false);
     
     // If there's an analysis summary, show summary modal first
     if (result && 'analysisSummary' in result && result.analysisSummary) {
@@ -218,16 +350,22 @@ const CaptureInput: React.FC = () => {
         setTempEntryId(summary.tempEntryId);
         // Remove tempEntryId from summary before passing to modal
         const { tempEntryId, ...summaryForModal } = summary;
-        setAnalysisSummary(summaryForModal);
+        
+        // Include document insights in the summary modal (attachment only used for AI context)
+        const enrichedSummary = {
+          ...summaryForModal,
+          documentInsights: result.insights || [],
+        };
+        
+        setAnalysisSummary(enrichedSummary);
         setShowSummaryModal(true);
+        
+        // Store insights for reference but don't show separate modal
+        if (result.insights) {
+          setDocumentInsights(result.insights);
+          setCurrentFileName(fileName);
+        }
       }
-    }
-    
-    // If there are insights, show modal after summary
-    if (result && 'shouldShowModal' in result && result.shouldShowModal && result.insights) {
-      setDocumentInsights(result.insights);
-      setCurrentFileName(fileName);
-      // Show insights modal after summary modal closes
     }
   };
 
@@ -237,11 +375,9 @@ const CaptureInput: React.FC = () => {
       setShowSummaryModal(false);
       setTempEntryId(null);
       setAnalysisSummary(null);
-      
-      // If there are insights, show them now
-      if (documentInsights.length > 0) {
-        setShowInsightsModal(true);
-      }
+      // Clear document insights - they were already shown in the summary modal
+      setDocumentInsights([]);
+      setCurrentFileName('');
     }
   };
 
@@ -480,6 +616,13 @@ const CaptureInput: React.FC = () => {
       relative bg-white rounded-2xl shadow-xl shadow-indigo-100/50 border border-indigo-50 transition-all duration-300 overflow-hidden
       ${isExpanded ? 'p-4 md:p-5' : 'p-2.5 md:p-3 flex items-center gap-2'}
     `}>
+      {/* Analysis Progress Bar */}
+      <AnimatePresence>
+        {analysisStep !== 'idle' && (
+          <AnalysisProgressBar step={analysisStep} hasAttachment={!!attachment} />
+        )}
+      </AnimatePresence>
+
       {/* File Error Message */}
       {fileError && (
         <div className="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-xl text-base text-rose-700 flex items-center gap-2">

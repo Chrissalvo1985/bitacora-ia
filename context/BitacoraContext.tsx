@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { Book, Entry, EntryStatus, NoteType, TaskItem, Attachment, SearchFilters, WeeklySummary, Folder } from '../types';
 import { analyzeEntry, updateBookContext, generateSummary, queryBitacora } from '../services/openaiService';
 import { analyzeDocument, DocumentInsight } from '../services/documentAnalysisService';
@@ -110,7 +110,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
-  const getBookName = (id: string) => books.find(b => b.id === id)?.name || 'Desconocido';
+  const getBookName = useCallback((id: string) => books.find(b => b.id === id)?.name || 'Desconocido', [books]);
 
   const addEntry = async (
     text: string, 
@@ -190,7 +190,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
         documentInsights = docAnalysis.insights;
       }
 
-      // 3. Create a temporary processing entry
+      // 3. Create a temporary processing entry (attachment is only for AI context, not stored)
       const tempEntry: Entry = {
         id: tempId,
         originalText: text,
@@ -200,7 +200,6 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
         summary: 'La IA está pensando...',
         tasks: [],
         entities: [],
-        attachment: attachment,
         status: EntryStatus.PROCESSING
       };
 
@@ -285,6 +284,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
           status: EntryStatus.COMPLETED
         };
 
+        // Save entry (attachment is only used for AI context, not stored)
         await dataService.saveEntry(finalEntry, user.id, analysis);
         setEntries(prev => prev.map(e => e.id === tempId ? finalEntry : e));
         
@@ -382,6 +382,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
         suggestedPriority: 'MEDIUM' as any
       };
 
+      // Save entry (attachment was only used for AI context, not stored)
       await dataService.saveEntry(finalEntry, user.id, analysis);
       
       // Update local state immediately with complete entry

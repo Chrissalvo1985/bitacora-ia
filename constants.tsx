@@ -36,7 +36,8 @@ import {
   BarChart3,
   Eraser,
   Users,
-  PenTool
+  PenTool,
+  Bell
 } from 'lucide-react';
 import { NoteType } from './types';
 
@@ -79,7 +80,8 @@ export const ICONS = {
   BarChart3,
   Eraser,
   Users,
-  PenTool
+  PenTool,
+  Bell
 };
 
 // Estilos más vibrantes y redondeados ("pill" style)

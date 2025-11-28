@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
 import { ICONS, TYPE_STYLES, TYPE_LABELS } from '../constants';
 import { NoteType, SearchFilters } from '../types';
@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 const ITEMS_PER_PAGE = 15;
 const ITEMS_PER_PAGE_MOBILE = 8;
 
-const SearchView: React.FC = () => {
+const SearchView: React.FC = memo(() => {
   const { books, searchEntries } = useBitacora();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
@@ -24,7 +24,7 @@ const SearchView: React.FC = () => {
     return () => window.removeEventListener('resize', checkSize);
   }, []);
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     if (!query.trim()) {
       setResults([]);
       setCurrentPage(1);
@@ -44,23 +44,23 @@ const SearchView: React.FC = () => {
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [query, filters, searchEntries]);
 
   const itemsPerPage = isMobile ? ITEMS_PER_PAGE_MOBILE : ITEMS_PER_PAGE;
   const paginatedResults = results.slice(0, currentPage * itemsPerPage);
   const hasMore = paginatedResults.length < results.length;
 
-  const loadMore = () => {
+  const loadMore = useCallback(() => {
     if (hasMore) {
       setCurrentPage(prev => prev + 1);
     }
-  };
+  }, [hasMore]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSearch();
     }
-  };
+  }, [handleSearch]);
 
   return (
     <div className="max-w-4xl mx-auto pb-24 md:pb-8 min-h-screen">
@@ -202,7 +202,9 @@ const SearchView: React.FC = () => {
       </AnimatePresence>
     </div>
   );
-};
+});
+
+SearchView.displayName = 'SearchView';
 
 export default SearchView;
 

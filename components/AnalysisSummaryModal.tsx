@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ICONS, TYPE_STYLES, TYPE_ICONS, TYPE_LABELS } from '../constants';
 import { NoteType, TaskItem, Book } from '../types';
 import { useBitacora } from '../context/BitacoraContext';
+import { DocumentInsight } from '../services/documentAnalysisService';
 
 interface AnalysisSummary {
   bookName: string;
@@ -12,6 +13,8 @@ interface AnalysisSummary {
   tasks: TaskItem[];
   entities: Array<{ name: string; type: string }>;
   isNewBook: boolean;
+  documentInsights?: DocumentInsight[];
+  // Note: Attachments are only used for AI context, not stored or displayed
 }
 
 interface AnalysisSummaryModalProps {
@@ -102,13 +105,16 @@ const AnalysisSummaryModal: React.FC<AnalysisSummaryModalProps> = ({
         />
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="fixed inset-0 z-[80] flex items-start md:items-center justify-center p-4 md:p-6 overflow-y-auto"
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 50 }}
+          className="fixed inset-0 z-[80] flex items-end md:items-center justify-center md:p-6"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[calc(100vh-2rem)] md:max-h-[90vh] my-auto flex flex-col overflow-hidden">
+          <div 
+            className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl w-full md:max-w-2xl max-h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
             {/* Header */}
             <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-purple-50">
               <div className="flex items-center justify-between mb-2">
@@ -331,6 +337,41 @@ const AnalysisSummaryModal: React.FC<AnalysisSummaryModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Document Insights - if any */}
+              {analysis.documentInsights && analysis.documentInsights.length > 0 && (
+                <div className="bg-violet-50/50 rounded-xl p-4 border border-violet-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ICONS.FileText size={18} className="text-violet-600" />
+                    <h3 className="font-bold text-gray-900">Análisis del Documento ({analysis.documentInsights.length})</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {analysis.documentInsights.map((insight, idx) => (
+                      <div key={idx} className="bg-white rounded-lg p-3 border border-violet-100">
+                        <div className="flex items-start gap-2">
+                          <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            insight.type === 'task' ? 'bg-blue-100 text-blue-700' :
+                            insight.type === 'risk' ? 'bg-rose-100 text-rose-700' :
+                            insight.type === 'deadline' ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {insight.type === 'task' ? 'Tarea' :
+                             insight.type === 'risk' ? 'Riesgo' :
+                             insight.type === 'deadline' ? 'Fecha' :
+                             insight.type === 'duplicate' ? 'Duplicado' :
+                             insight.type === 'related' ? 'Relacionado' : 'Info'}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800">{insight.title}</p>
+                            <p className="text-xs text-gray-600 mt-0.5">{insight.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             </div>
 
             {/* Footer */}

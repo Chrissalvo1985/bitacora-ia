@@ -171,11 +171,11 @@ INSTRUCCIONES ESPECÍFICAS:
     // If there's an attachment, add it to the message
     if (attachment) {
       if (attachment.type === 'image') {
-        const base64Data = attachment.data.split(',')[1];
+        const base64Data = attachment.data.includes(',') ? attachment.data.split(',')[1] : attachment.data;
         messages.push({
           role: 'user',
           content: [
-            { type: 'text', text: 'Analiza también esta imagen adjunta y extrae cualquier texto, información o acciones pendientes que contenga.' },
+            { type: 'text', text: 'Analiza también esta imagen adjunta y extrae cualquier texto, información o acciones pendientes que contenga. Usa la información de la imagen junto con el texto del usuario para crear una entrada completa.' },
             {
               type: 'image_url',
               image_url: {
@@ -185,13 +185,18 @@ INSTRUCCIONES ESPECÍFICAS:
           ]
         } as any);
       } else if (attachment.type === 'document' && attachment.mimeType === 'application/pdf') {
-        // For PDFs, we can't extract text directly in the browser easily
-        // But we can tell the AI to analyze it if we had OCR
-        // For now, just mention it in the prompt
-        messages.push({
-          role: 'user',
-          content: 'Hay un archivo PDF adjunto llamado "' + attachment.fileName + '". Si el usuario mencionó algo sobre este archivo en el texto, tenlo en cuenta. Si no, simplemente menciona que hay un PDF adjunto en el resumen.'
-        });
+        // For PDFs, check if we have extracted text
+        if (attachment.extractedText) {
+          messages.push({
+            role: 'user',
+            content: `DOCUMENTO PDF ADJUNTO: "${attachment.fileName}"\n\nCONTENIDO EXTRAÍDO DEL PDF:\n---\n${attachment.extractedText.slice(0, 15000)}\n---\n\nAnaliza el contenido del documento junto con el texto del usuario para crear una entrada completa. El documento se guardará como adjunto de referencia.`
+          });
+        } else {
+          messages.push({
+            role: 'user',
+            content: `Hay un archivo PDF adjunto llamado "${attachment.fileName}". Si el usuario mencionó algo sobre este archivo en el texto, tenlo en cuenta. El PDF se guardará como adjunto de referencia.`
+          });
+        }
       }
     }
 

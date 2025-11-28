@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback, memo } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
 import { useAuth } from '../context/AuthContext';
 import EntryCard from './EntryCard';
@@ -15,13 +15,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
   const { entries, books } = useBitacora();
   const { user } = useAuth();
 
-  // Stats
-  const openTasks = entries.reduce((acc, entry) => acc + entry.tasks.filter(t => !t.isDone).length, 0);
-  const decisions = entries.filter(e => e.type === 'DECISION').length;
-  const recentIdeas = entries.filter(e => e.type === 'IDEA' && e.createdAt > Date.now() - 7 * 24 * 60 * 60 * 1000).length;
+  // Memoized stats
+  const stats = useMemo(() => {
+    const openTasks = entries.reduce((acc, entry) => acc + entry.tasks.filter(t => !t.isDone).length, 0);
+    const completedTasks = entries.reduce((acc, entry) => acc + entry.tasks.filter(t => t.isDone).length, 0);
+    const totalEntries = entries.length;
+    return { openTasks, completedTasks, totalEntries };
+  }, [entries]);
+
+  const { openTasks, completedTasks, totalEntries } = stats;
   
   // Most used books (favorites) - sorted by entry count and last activity
   const favoriteBooks = useMemo(() => {
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    
     return books
       .map(book => {
         const bookEntries = entries.filter(e => e.bookId === book.id);
@@ -36,63 +44,46 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
           entryCount,
           lastActivity,
           pendingTasks,
-          score: entryCount * 2 + (lastActivity > Date.now() - 30 * 24 * 60 * 60 * 1000 ? 10 : 0) // Boost recent activity
+          score: entryCount * 2 + (lastActivity > thirtyDaysAgo ? 10 : 0)
         };
       })
-      .filter(book => book.entryCount > 0) // Only show books with entries
+      .filter(book => book.entryCount > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 6); // Top 6 most used
+      .slice(0, 6);
   }, [books, entries]);
   
-  // High priority tasks
-  const highPriorityTasks = entries
-    .flatMap(e => e.tasks
+  // High priority tasks - memoized
+  const highPriorityTasks = useMemo(() => {
+    return entries.flatMap(e => e.tasks
       .filter(t => !t.isDone && t.priority === 'HIGH')
       .map(t => ({ ...t, entryId: e.id, bookId: e.bookId, bookName: books.find(b => b.id === e.bookId)?.name || 'Desconocido' }))
     );
+  }, [entries, books]);
 
-  // Tasks with due dates approaching (next 7 days)
-  const upcomingDeadlines = entries
-    .flatMap(e => e.tasks
-      .filter(t => {
-        if (t.isDone || !t.dueDate) return false;
-        const dueDate = new Date(t.dueDate);
-        const today = new Date();
-        const daysDiff = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        return daysDiff >= 0 && daysDiff <= 7;
-      })
-      .map(t => ({ 
-        ...t, 
-        entryId: e.id, 
-        bookId: e.bookId,
-        bookName: books.find(b => b.id === e.bookId)?.name || 'Desconocido', 
-        daysUntil: Math.ceil((new Date(t.dueDate!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)),
-        entrySummary: e.summary
-      }))
-    )
-    .sort((a, b) => (a.daysUntil || 0) - (b.daysUntil || 0));
-
-  // Recent decisions (last 7 days)
-  const recentDecisions = entries
-    .filter(e => e.type === 'DECISION' && e.createdAt > Date.now() - 7 * 24 * 60 * 60 * 1000)
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 3);
-
-  // Risks detected
-  const risks = entries
-    .filter(e => e.type === 'RISK')
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 3);
-
-  // Recent activity (last 3 entries)
-  const recentActivity = entries
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 3);
-
-  // Quick stats
-  const totalEntries = entries.length;
-  const completedTasks = entries.reduce((acc, entry) => acc + entry.tasks.filter(t => t.isDone).length, 0);
-  const completionRate = totalEntries > 0 ? Math.round((completedTasks / (completedTasks + openTasks)) * 100) : 0;
+  // Tasks with due dates approaching (next 7 days) - memoized
+  const upcomingDeadlines = useMemo(() => {
+    const now = Date.now();
+    const today = new Date();
+    
+    return entries
+      .flatMap(e => e.tasks
+        .filter(t => {
+          if (t.isDone || !t.dueDate) return false;
+          const dueDate = new Date(t.dueDate);
+          const daysDiff = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          return daysDiff >= 0 && daysDiff <= 7;
+        })
+        .map(t => ({ 
+          ...t, 
+          entryId: e.id, 
+          bookId: e.bookId,
+          bookName: books.find(b => b.id === e.bookId)?.name || 'Desconocido', 
+          daysUntil: Math.ceil((new Date(t.dueDate!).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
+          entrySummary: e.summary
+        }))
+      )
+      .sort((a, b) => (a.daysUntil || 0) - (b.daysUntil || 0));
+  }, [entries, books]);
 
   // Dynamic greeting with personality based on gender
   const hour = new Date().getHours();

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import { ICONS } from '../constants';
 import { useAuth } from '../context/AuthContext';
 
-const LoginView: React.FC = () => {
+const LoginView: React.FC = memo(() => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -13,7 +13,7 @@ const LoginView: React.FC = () => {
   
   const { login, register } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
@@ -34,7 +34,7 @@ const LoginView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isLogin, email, password, name, login, register]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
@@ -155,7 +155,9 @@ const LoginView: React.FC = () => {
       </motion.div>
     </div>
   );
-};
+});
+
+LoginView.displayName = 'LoginView';
 
 export default LoginView;
 

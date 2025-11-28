@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
 import { ICONS } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 const ITEMS_PER_PAGE = 20;
 const ITEMS_PER_PAGE_MOBILE = 10;
 
-const TaskView: React.FC = () => {
+const TaskView: React.FC = memo(() => {
   const { entries, getBookName, toggleTask, updateTaskFields } = useBitacora();
   const [currentPage, setCurrentPage] = useState(1);
   const [isMobile, setIsMobile] = useState(false);
@@ -15,7 +15,7 @@ const TaskView: React.FC = () => {
   const [editValue, setEditValue] = useState('');
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   
-  const toggleTaskExpand = (taskKey: string) => {
+  const toggleTaskExpand = useCallback((taskKey: string) => {
     setExpandedTasks(prev => {
       const newSet = new Set(prev);
       if (newSet.has(taskKey)) {
@@ -25,7 +25,7 @@ const TaskView: React.FC = () => {
       }
       return newSet;
     });
-  };
+  }, []);
 
   useEffect(() => {
     const checkSize = () => setIsMobile(window.innerWidth < 768);
@@ -64,37 +64,36 @@ const TaskView: React.FC = () => {
   const paginatedTasks = allTasks.slice(0, currentPage * itemsPerPage);
   const hasMore = paginatedTasks.length < allTasks.length;
 
-  const loadMore = () => {
+  const loadMore = useCallback(() => {
     if (hasMore) {
       setCurrentPage(prev => prev + 1);
     }
-  };
+  }, [hasMore]);
 
-  const handleStartEdit = (entryId: string, taskIndex: number, field: 'assignee' | 'dueDate', currentValue?: string) => {
+  const handleStartEdit = useCallback((entryId: string, taskIndex: number, field: 'assignee' | 'dueDate', currentValue?: string) => {
     setEditingTask({ entryId, taskIndex, field });
     setEditValue(currentValue || '');
-  };
+  }, []);
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = useCallback(async () => {
     if (!editingTask) return;
     
     const updates: any = {};
     if (editingTask.field === 'assignee') {
       updates.assignee = editValue.trim() || undefined;
     } else if (editingTask.field === 'dueDate') {
-      // Convert date string to ISO format if provided
       updates.dueDate = editValue ? editValue : undefined;
     }
     
     await updateTaskFields(editingTask.entryId, editingTask.taskIndex, updates);
     setEditingTask(null);
     setEditValue('');
-  };
+  }, [editingTask, editValue, updateTaskFields]);
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = useCallback(() => {
     setEditingTask(null);
     setEditValue('');
-  };
+  }, []);
 
   return (
     <div className="max-w-4xl mx-auto pb-24 md:pb-8">
@@ -398,6 +397,8 @@ const TaskView: React.FC = () => {
       )}
     </div>
   );
-};
+});
+
+TaskView.displayName = 'TaskView';
 
 export default TaskView;

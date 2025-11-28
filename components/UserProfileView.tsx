@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ICONS } from '../constants';
 import { useAuth } from '../context/AuthContext';
@@ -6,6 +6,7 @@ import { updateUser, changePassword, createUserAsAdmin, getAllUsers } from '../s
 import { neon } from '@neondatabase/serverless';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale/es';
+import { useNotifications } from './NotificationManager';
 
 // Get database URL
 function getDatabaseUrl(): string | undefined {
@@ -45,8 +46,9 @@ const formatDate = (date: string | Date | null | undefined, formatStr: string): 
   }
 };
 
-const UserProfileView: React.FC = () => {
+const UserProfileView: React.FC = memo(() => {
   const { user, refreshAuth } = useAuth();
+  const { isSupported: notificationsSupported, isEnabled: notificationsEnabled, requestPermission } = useNotifications();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -77,7 +79,7 @@ const UserProfileView: React.FC = () => {
     }
   }, [user]);
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     if (!user || !sql) return;
     
     setIsLoadingSessions(true);
@@ -104,9 +106,9 @@ const UserProfileView: React.FC = () => {
     } finally {
       setIsLoadingSessions(false);
     }
-  };
+  }, [user]);
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = useCallback(async () => {
     if (!user) return;
     
     setProfileError(null);
@@ -130,9 +132,9 @@ const UserProfileView: React.FC = () => {
     } finally {
       setIsSavingProfile(false);
     }
-  };
+  }, [user, name, email, gender, refreshAuth]);
 
-  const handleChangePassword = async () => {
+  const handleChangePassword = useCallback(async () => {
     if (!user) return;
 
     setPasswordError(null);
@@ -165,9 +167,9 @@ const UserProfileView: React.FC = () => {
     } finally {
       setIsChangingPasswordLoading(false);
     }
-  };
+  }, [user, newPassword, confirmPassword, oldPassword]);
 
-  const handleRevokeSession = async (sessionToken: string) => {
+  const handleRevokeSession = useCallback(async (sessionToken: string) => {
     if (!sql) return;
     
     try {
@@ -183,7 +185,7 @@ const UserProfileView: React.FC = () => {
     } catch (error) {
       console.error('Error revoking session:', error);
     }
-  };
+  }, [loadSessions]);
 
   if (!user) {
     return (
@@ -470,6 +472,57 @@ const UserProfileView: React.FC = () => {
           )}
         </AnimatePresence>
           </motion.div>
+
+          {/* Notifications Section */}
+          {notificationsSupported && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-6"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-xl ${notificationsEnabled ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+                    <ICONS.Bell size={20} className={notificationsEnabled ? 'text-emerald-600' : 'text-gray-500'} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">Notificaciones</h2>
+                    <p className="text-sm text-gray-500">
+                      {notificationsEnabled 
+                        ? 'Recibirás recordatorios inteligentes' 
+                        : 'Activa para recibir recordatorios'}
+                    </p>
+                  </div>
+                </div>
+                {notificationsEnabled ? (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-xs font-semibold text-emerald-700">Activas</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={requestPermission}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors text-sm"
+                  >
+                    Activar
+                  </button>
+                )}
+              </div>
+              
+              {notificationsEnabled && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-xs text-gray-500 mb-2">📱 Comportamiento inteligente:</p>
+                  <ul className="text-xs text-gray-600 space-y-1">
+                    <li>• Máximo 5 notificaciones por día</li>
+                    <li>• Solo entre 8:00 AM y 10:00 PM</li>
+                    <li>• Prioridad a tareas próximas a vencer</li>
+                    <li>• Mínimo 30 min entre recordatorios</li>
+                  </ul>
+                </div>
+              )}
+            </motion.div>
+          )}
         </div>
 
         {/* Right Column - Sessions */}
@@ -555,10 +608,12 @@ const UserProfileView: React.FC = () => {
       )}
     </div>
   );
-};
+});
+
+UserProfileView.displayName = 'UserProfileView';
 
 // Admin Users Section Component
-const AdminUsersSection: React.FC<{ userId: string }> = ({ userId }) => {
+const AdminUsersSection: React.FC<{ userId: string }> = memo(({ userId }) => {
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
@@ -569,11 +624,7 @@ const AdminUsersSection: React.FC<{ userId: string }> = ({ userId }) => {
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setIsLoadingUsers(true);
     try {
       const allUsers = await getAllUsers(userId);
@@ -583,9 +634,13 @@ const AdminUsersSection: React.FC<{ userId: string }> = ({ userId }) => {
     } finally {
       setIsLoadingUsers(false);
     }
-  };
+  }, [userId]);
 
-  const handleCreateUser = async () => {
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  const handleCreateUser = useCallback(async () => {
     setCreateError(null);
     setCreateSuccess(null);
 
@@ -607,7 +662,7 @@ const AdminUsersSection: React.FC<{ userId: string }> = ({ userId }) => {
     } catch (error: any) {
       setCreateError(error.message || 'Error al crear el usuario');
     }
-  };
+  }, [userId, newUserEmail, newUserName, newUserPassword, newUserIsAdmin, loadUsers]);
 
   return (
     <motion.div
@@ -785,6 +840,8 @@ const AdminUsersSection: React.FC<{ userId: string }> = ({ userId }) => {
       </div>
     </motion.div>
   );
-};
+});
+
+AdminUsersSection.displayName = 'AdminUsersSection';
 
 export default UserProfileView;

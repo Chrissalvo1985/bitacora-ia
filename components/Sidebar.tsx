@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import { ICONS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
 import { useAuth } from '../context/AuthContext';
@@ -12,7 +12,7 @@ interface SidebarProps {
   setSelectedBookId: (id: string | null) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ 
+const Sidebar: React.FC<SidebarProps> = memo(({ 
   activeView, 
   setActiveView, 
   selectedBookId, 
@@ -23,15 +23,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isBooksMenuOpen, setIsBooksMenuOpen] = useState(false);
 
-  const handleNav = (view: string, bookId: string | null = null) => {
+  const handleNav = useCallback((view: string, bookId: string | null = null) => {
     setActiveView(view);
     setSelectedBookId(bookId);
-  };
+  }, [setActiveView, setSelectedBookId]);
 
-  const handleSelectBook = (bookId: string) => {
+  const handleSelectBook = useCallback((bookId: string) => {
     setActiveView('book');
     setSelectedBookId(bookId);
-  };
+  }, [setActiveView, setSelectedBookId]);
 
   return (
     <div className="hidden md:flex flex-col w-72 bg-white border-r border-gray-100 h-full p-6">
@@ -213,6 +213,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         </AnimatePresence>
     </div>
   );
-};
+});
+
+Sidebar.displayName = 'Sidebar';
 
 export default Sidebar;

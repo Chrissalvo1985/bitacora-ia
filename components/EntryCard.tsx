@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, memo, useCallback } from 'react';
 import { Entry, EntryStatus, NoteType } from '../types';
 import { ICONS, TYPE_STYLES, TYPE_ICONS, TYPE_LABELS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = ({ entry, compact = false }) => {
+const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, compact = false }) => {
   const { toggleTask, deleteEntry, getBookName } = useBitacora();
   const bookName = getBookName(entry.bookId);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -130,41 +130,6 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = ({ entry, compa
                 </p>
               )}
 
-              {/* Attachment Display */}
-              {entry.attachment && (
-                <div>
-                  {entry.attachment.type === 'image' ? (
-                    <img 
-                      src={entry.attachment.data} 
-                      alt="Adjunto" 
-                      className="rounded-xl max-h-60 w-full object-cover border border-gray-100 shadow-sm"
-                    />
-                  ) : (
-                    <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors">
-                      <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
-                        <ICONS.FileText className="text-indigo-500" size={28} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-base font-bold text-gray-700 truncate mb-1">{entry.attachment.fileName}</p>
-                        <p className="text-xs text-gray-400 uppercase mb-2">
-                          {entry.attachment.mimeType === 'application/pdf' ? 'PDF' : 'Documento'}
-                        </p>
-                        {entry.attachment.mimeType === 'application/pdf' && (
-                          <a
-                            href={entry.attachment.data}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-indigo-600 hover:text-indigo-700 font-semibold inline-flex items-center gap-1"
-                          >
-                            Abrir PDF →
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* Tasks */}
               {entry.tasks.length > 0 && (
                 <div className="rounded-xl overflow-hidden border border-gray-100">
@@ -260,6 +225,14 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = ({ entry, compa
       </AnimatePresence>
     </motion.div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison for memo - only re-render if entry data actually changed
+  return prevProps.entry.id === nextProps.entry.id 
+    && prevProps.entry.status === nextProps.entry.status
+    && prevProps.entry.summary === nextProps.entry.summary
+    && prevProps.entry.tasks.length === nextProps.entry.tasks.length
+    && prevProps.entry.tasks.every((t, i) => t.isDone === nextProps.entry.tasks[i]?.isDone)
+    && prevProps.compact === nextProps.compact;
+});
 
 export default EntryCard;

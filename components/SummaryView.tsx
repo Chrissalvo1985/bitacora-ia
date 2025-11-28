@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, memo, useMemo } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
 import { ICONS } from '../constants';
 import { WeeklySummary } from '../types';
 import { motion } from 'framer-motion';
 import EntryCard from './EntryCard';
 
-const SummaryView: React.FC = () => {
+const SummaryView: React.FC = memo(() => {
   const { entries, generateWeeklySummary } = useBitacora();
   
   // Check if there are any entries
@@ -14,7 +14,7 @@ const SummaryView: React.FC = () => {
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     setIsGenerating(true);
     try {
       const generated = await generateWeeklySummary(period);
@@ -24,13 +24,13 @@ const SummaryView: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  };
+  }, [generateWeeklySummary, period]);
 
-  const periodLabels = {
+  const periodLabels = useMemo(() => ({
     day: 'Hoy',
     week: 'Esta Semana',
     month: 'Este Mes',
-  };
+  }), []);
 
   return (
     <div className="max-w-4xl mx-auto pb-24 md:pb-8">
@@ -196,7 +196,9 @@ const SummaryView: React.FC = () => {
       ) : null}
     </div>
   );
-};
+});
+
+SummaryView.displayName = 'SummaryView';
 
 export default SummaryView;
 
