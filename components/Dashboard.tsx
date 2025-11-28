@@ -150,7 +150,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto h-screen flex flex-col px-4 md:px-6 lg:px-8 overflow-hidden">
+    <div className="max-w-[1600px] mx-auto flex flex-col px-0 md:px-6 lg:px-8">
       
       {/* Header - Compact */}
       <div className="flex-shrink-0 pt-3 pb-2">
@@ -170,7 +170,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
       </div>
 
       {/* Main Content - Optimized Layout */}
-      <div className="flex-1 flex flex-col gap-3 overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col gap-3 min-h-0">
         
         {/* Stats Block - Horizontal Compact */}
         <div className="flex-shrink-0 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-3 md:p-4 border border-indigo-100 shadow-sm">
@@ -239,16 +239,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
         )}
 
         {/* Tasks Section - Compact with max height */}
-        <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 min-h-0 overflow-hidden items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 pb-4">
           {/* High Priority Tasks */}
           {highPriorityTasks.length > 0 && (
-            <div className="flex flex-col h-full min-h-0 overflow-hidden">
+            <div className="flex flex-col">
               <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2 flex-shrink-0">
                 <span className="w-1.5 h-4 bg-rose-500 rounded-full"></span>
                 Prioridad Alta
               </h3>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 overflow-y-auto flex-1 min-h-0 max-h-full">
-                <div className="min-h-0">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 max-h-[300px] md:max-h-[400px] overflow-y-auto">
+                <div>
                   {highPriorityTasks.slice(0, 8).map((task, idx) => (
                     <motion.div
                       key={idx}
@@ -289,7 +289,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
                 <span className="w-1.5 h-4 bg-orange-500 rounded-full"></span>
                 Próximos Vencimientos
               </h3>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 overflow-hidden">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 max-h-[300px] md:max-h-[400px] overflow-y-auto">
                 {upcomingDeadlines.slice(0, 8).map((task, idx) => (
                     <motion.div
                       key={idx}

@@ -127,8 +127,8 @@ const Layout = () => {
       />
       
       <main className="flex-1 flex flex-col h-full overflow-hidden w-full relative bg-[#f8fafc]">
-        {/* Mobile Header - Sticky */}
-        <div className="md:hidden bg-white/90 backdrop-blur-md sticky top-0 z-40 px-5 py-3 flex items-center justify-between border-b border-gray-100 safe-top">
+        {/* Mobile Header - Fixed */}
+        <div className="md:hidden bg-white/90 backdrop-blur-md flex-shrink-0 z-40 px-5 py-3 flex items-center justify-between border-b border-gray-100 safe-top">
           <div className="flex items-center gap-2.5">
             <div className="bg-gradient-to-tr from-indigo-600 to-purple-600 p-1.5 rounded-lg shadow-sm">
                 <ICONS.Book size={18} className="text-white" />
@@ -165,7 +165,7 @@ const Layout = () => {
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto w-full max-w-5xl mx-auto px-5 md:px-8 pt-4 md:pt-8 scroll-smooth no-scrollbar pb-safe">
+        <div className="flex-1 overflow-y-auto w-full max-w-5xl mx-auto px-5 md:px-8 pt-4 md:pt-8 scroll-smooth no-scrollbar pb-24 md:pb-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeView}
