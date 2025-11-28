@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
+import { useAuth } from '../context/AuthContext';
 import EntryCard from './EntryCard';
 import { ICONS } from '../constants';
 import CaptureInput from './CaptureInput';
@@ -12,6 +13,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }) => {
   const { entries, books } = useBitacora();
+  const { user } = useAuth();
 
   // Stats
   const openTasks = entries.reduce((acc, entry) => acc + entry.tasks.filter(t => !t.isDone).length, 0);
@@ -92,24 +94,44 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
   const completedTasks = entries.reduce((acc, entry) => acc + entry.tasks.filter(t => t.isDone).length, 0);
   const completionRate = totalEntries > 0 ? Math.round((completedTasks / (completedTasks + openTasks)) * 100) : 0;
 
-  // Dynamic greeting with personality
+  // Dynamic greeting with personality based on gender
   const hour = new Date().getHours();
+  const isFemale = user?.gender === 'female';
+  
   const greetings = {
-    morning: [
+    morning: isFemale ? [
+      "¡Buenos días, reina! ☀️",
+      "¡Arriba, campeona! 🌅",
+      "¡Día nuevo, oportunidades nuevas! ✨",
+      "¡Buenos días, jefa! 💪",
+      "¡Hora de conquistar el día! 🚀"
+    ] : [
       "¡Buenos días, crack! ☀️",
       "¡Arriba, campeón! 🌅",
       "¡Día nuevo, oportunidades nuevas! ✨",
       "¡Buenos días, jefe! 💪",
       "¡Hora de conquistar el día! 🚀"
     ],
-    afternoon: [
+    afternoon: isFemale ? [
+      "¡Buenas tardes! 🚀",
+      "¡Sigue así, máquina! ⚡",
+      "¡Medio día, medio éxito! 🎯",
+      "¡Buenas tardes, reina! 🌤️",
+      "¡A full, como siempre! 🔥"
+    ] : [
       "¡Buenas tardes! 🚀",
       "¡Sigue así, máquina! ⚡",
       "¡Medio día, medio éxito! 🎯",
       "¡Buenas tardes, crack! 🌤️",
       "¡A full, como siempre! 🔥"
     ],
-    night: [
+    night: isFemale ? [
+      "¡Buenas noches! 🌙",
+      "¡Casi lista, reina! ⭐",
+      "¡Última recta del día! 💫",
+      "¡Buenas noches, jefa! 🌃",
+      "¡A cerrar con broche de oro! 🏆"
+    ] : [
       "¡Buenas noches! 🌙",
       "¡Casi listo, crack! ⭐",
       "¡Última recta del día! 💫",

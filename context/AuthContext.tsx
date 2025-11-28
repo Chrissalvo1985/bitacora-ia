@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../services/authService';
-import { registerUser, loginUser, verifySession, logoutUser as logoutUserService } from '../services/authService';
+import { registerUser, loginUser, verifySession, logoutUser as logoutUserService, updateUser as updateUserService } from '../services/authService';
 import { initAuthTables } from '../services/authService';
 
 interface AuthContextType {
@@ -11,9 +11,10 @@ interface AuthContextType {
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
+  updateUserProfile: (updates: { name?: string; email?: string; gender?: 'male' | 'female' | 'other' }) => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const AUTH_TOKEN_KEY = 'bitacora_auth_token';
 
@@ -98,6 +99,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const updateUserProfile = async (updates: { name?: string; email?: string; gender?: 'male' | 'female' | 'other' }) => {
+    if (!user) throw new Error('Usuario no autenticado');
+    
+    try {
+      await updateUserService(user.id, updates);
+      // Update local user state
+      setUser(prev => prev ? { ...prev, ...updates } : null);
+    } catch (error) {
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -108,6 +121,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         register,
         logout,
         refreshAuth,
+        updateUserProfile,
       }}
     >
       {children}

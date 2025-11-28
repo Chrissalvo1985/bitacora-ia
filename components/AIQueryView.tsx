@@ -4,7 +4,10 @@ import { ICONS } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const AIQueryView: React.FC = () => {
-  const { queryAI } = useBitacora();
+  const { queryAI, entries } = useBitacora();
+  
+  // Check if there are any entries
+  const hasEntries = entries.length > 0;
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState<string | null>(null);
   const [isQuerying, setIsQuerying] = useState(false);
@@ -46,46 +49,63 @@ const AIQueryView: React.FC = () => {
         <p className="text-sm md:text-base text-gray-500 ml-1">Haz preguntas en lenguaje natural sobre tu trabajo. Tu IA personal te responde 🧠✨</p>
       </div>
 
-      {/* Query Input */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl md:rounded-3xl shadow-lg border border-gray-100 p-3 md:p-4 lg:p-6 mb-4 md:mb-6"
-      >
-        <div className="flex gap-2 md:gap-3 mb-3 md:mb-4">
-          <div className="flex-1 relative">
-            <ICONS.Sparkles className="absolute left-3 md:left-4 top-3 md:top-4 text-gray-400 w-4 h-4 md:w-5 md:h-5" />
-            <textarea
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Ej: ¿Qué cosas pendientes tengo con Romina? 🤔"
-              className="w-full pl-10 md:pl-12 pr-3 md:pr-4 py-2.5 md:py-3 rounded-xl md:rounded-2xl border border-gray-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-100 outline-none transition-all resize-none min-h-[80px] md:min-h-[100px] text-sm md:text-base"
-              rows={3}
-            />
+      {/* Query Input or Empty State */}
+      {hasEntries ? (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl md:rounded-3xl shadow-lg border border-gray-100 p-3 md:p-4 lg:p-6 mb-4 md:mb-6"
+        >
+          <div className="flex gap-2 md:gap-3 mb-3 md:mb-4">
+            <div className="flex-1 relative">
+              <ICONS.Sparkles className="absolute left-3 md:left-4 top-3 md:top-4 text-gray-400 w-4 h-4 md:w-5 md:h-5" />
+              <textarea
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Ej: ¿Qué cosas pendientes tengo con Romina? 🤔"
+                className="w-full pl-10 md:pl-12 pr-3 md:pr-4 py-2.5 md:py-3 rounded-xl md:rounded-2xl border border-gray-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-100 outline-none transition-all resize-none min-h-[80px] md:min-h-[100px] text-sm md:text-base"
+                rows={3}
+              />
+            </div>
           </div>
-        </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <button
-            onClick={handleQuery}
-            disabled={isQuerying || !query.trim()}
-            className="px-4 md:px-6 py-2.5 md:py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl md:rounded-2xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 md:gap-2 text-sm md:text-base w-full sm:w-auto justify-center"
-          >
-            {isQuerying ? (
-              <>
-                <ICONS.Loader2 className="animate-spin w-4 h-4 md:w-5 md:h-5" />
-                Pensando... 🧠
-              </>
-            ) : (
-              <>
-                <ICONS.Send className="w-4 h-4 md:w-5 md:h-5" />
-                Preguntar
-              </>
-            )}
-          </button>
-          <span className="text-xs text-gray-400 self-end sm:self-center">Presiona Enter para enviar</span>
-        </div>
-      </motion.div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <button
+              onClick={handleQuery}
+              disabled={isQuerying || !query.trim()}
+              className="px-4 md:px-6 py-2.5 md:py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl md:rounded-2xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 md:gap-2 text-sm md:text-base w-full sm:w-auto justify-center"
+            >
+              {isQuerying ? (
+                <>
+                  <ICONS.Loader2 className="animate-spin w-4 h-4 md:w-5 md:h-5" />
+                  Pensando... 🧠
+                </>
+              ) : (
+                <>
+                  <ICONS.Send className="w-4 h-4 md:w-5 md:h-5" />
+                  Preguntar
+                </>
+              )}
+            </button>
+            <span className="text-xs text-gray-400 self-end sm:self-center">Presiona Enter para enviar</span>
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl md:rounded-3xl shadow-lg border border-gray-100 p-6 md:p-10 lg:p-12 text-center"
+        >
+          <div className="bg-gray-100 w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center mx-auto mb-4 md:mb-6">
+            <ICONS.Sparkles className="text-gray-400 w-8 h-8 md:w-10 md:h-10" />
+          </div>
+          <h3 className="text-xl md:text-2xl font-bold text-gray-500 mb-2 md:mb-3">Sin entradas todavía 📝</h3>
+          <p className="text-sm md:text-base text-gray-400 mb-4 md:mb-6 max-w-md mx-auto">
+            Agrega algunas notas, tareas o ideas a tu bitácora para poder hacerle preguntas a la IA.
+          </p>
+          <p className="text-xs text-gray-300 italic">¡Tu asistente personal está esperando que empieces! 🤖✨</p>
+        </motion.div>
+      )}
 
       {/* Response */}
       <AnimatePresence mode="wait">

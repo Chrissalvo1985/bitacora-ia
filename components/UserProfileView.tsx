@@ -55,6 +55,7 @@ const UserProfileView: React.FC = () => {
   // Profile form
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
+  const [gender, setGender] = useState<'male' | 'female' | 'other' | ''>(user?.gender || '');
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -71,6 +72,7 @@ const UserProfileView: React.FC = () => {
     if (user) {
       setName(user.name);
       setEmail(user.email);
+      setGender(user.gender || '');
       loadSessions();
     }
   }, [user]);
@@ -112,7 +114,11 @@ const UserProfileView: React.FC = () => {
     setIsSavingProfile(true);
 
     try {
-      await updateUser(user.id, { name, email });
+      const updates: { name: string; email: string; gender?: 'male' | 'female' | 'other' } = { name, email };
+      if (gender) {
+        updates.gender = gender as 'male' | 'female' | 'other';
+      }
+      await updateUser(user.id, updates);
       setProfileSuccess('Perfil actualizado correctamente');
       await refreshAuth();
       setTimeout(() => {
@@ -275,6 +281,22 @@ const UserProfileView: React.FC = () => {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Género <span className="font-normal text-gray-400">(para personalizar saludos)</span>
+                </label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'other' | '')}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all bg-white"
+                >
+                  <option value="">No especificado</option>
+                  <option value="male">Masculino</option>
+                  <option value="female">Femenino</option>
+                  <option value="other">Otro</option>
+                </select>
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={handleSaveProfile}
@@ -298,6 +320,7 @@ const UserProfileView: React.FC = () => {
                     setIsEditingProfile(false);
                     setName(user.name);
                     setEmail(user.email);
+                    setGender(user.gender || '');
                     setProfileError(null);
                     setProfileSuccess(null);
                   }}

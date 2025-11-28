@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ICONS, TYPE_STYLES, TYPE_ICONS, TYPE_LABELS } from '../constants';
-import { NoteType, TaskItem } from '../types';
+import { NoteType, TaskItem, Book } from '../types';
+import { useBitacora } from '../context/BitacoraContext';
 
 interface AnalysisSummary {
   bookName: string;
@@ -26,10 +27,30 @@ const AnalysisSummaryModal: React.FC<AnalysisSummaryModalProps> = ({
   onConfirm,
   analysis,
 }) => {
-  if (!analysis) return null;
+  const { books } = useBitacora();
   
-  const [editedTasks, setEditedTasks] = useState<TaskItem[]>(analysis.tasks || []);
-  const [selectedBookId, setSelectedBookId] = useState<string | undefined>(analysis.bookId);
+  const [editedTasks, setEditedTasks] = useState<TaskItem[]>(analysis?.tasks || []);
+  const [selectedBookId, setSelectedBookId] = useState<string | undefined>(analysis?.bookId);
+  const [selectedBookName, setSelectedBookName] = useState<string>(analysis?.bookName || '');
+  const [isNewBook, setIsNewBook] = useState<boolean>(analysis?.isNewBook || false);
+  const [showBookSelector, setShowBookSelector] = useState(false);
+  const [newBookName, setNewBookName] = useState('');
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+
+  // Reset state when analysis changes
+  useEffect(() => {
+    if (analysis) {
+      setEditedTasks(analysis.tasks || []);
+      setSelectedBookId(analysis.bookId);
+      setSelectedBookName(analysis.bookName);
+      setIsNewBook(analysis.isNewBook);
+      setShowBookSelector(false);
+      setNewBookName('');
+      setIsCreatingNew(false);
+    }
+  }, [analysis]);
+
+  if (!analysis) return null;
 
   const handleTaskChange = (index: number, field: keyof TaskItem, value: any) => {
     const updated = [...editedTasks];
@@ -37,11 +58,32 @@ const AnalysisSummaryModal: React.FC<AnalysisSummaryModalProps> = ({
     setEditedTasks(updated);
   };
 
+  const handleSelectBook = (book: Book) => {
+    setSelectedBookId(book.id);
+    setSelectedBookName(book.name);
+    setIsNewBook(false);
+    setShowBookSelector(false);
+    setIsCreatingNew(false);
+  };
+
+  const handleCreateNewBook = () => {
+    if (!newBookName.trim()) return;
+    const newId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    setSelectedBookId(newId);
+    setSelectedBookName(newBookName.trim());
+    setIsNewBook(true);
+    setShowBookSelector(false);
+    setNewBookName('');
+    setIsCreatingNew(false);
+  };
+
   const handleConfirm = () => {
     onConfirm({
       ...analysis,
       tasks: editedTasks,
       bookId: selectedBookId,
+      bookName: selectedBookName,
+      isNewBook: isNewBook,
     });
     onClose();
   };
@@ -90,22 +132,97 @@ const AnalysisSummaryModal: React.FC<AnalysisSummaryModalProps> = ({
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 min-h-0">
-              {/* Book Assignment */}
+              {/* Book Assignment - Editable */}
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <ICONS.Book size={18} className="text-indigo-600" />
-                  <h3 className="font-bold text-gray-900">Libreta Asignada</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <ICONS.Book size={18} className="text-indigo-600" />
+                    <h3 className="font-bold text-gray-900">Libreta Asignada</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowBookSelector(!showBookSelector)}
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                  >
+                    <ICONS.Edit size={14} />
+                    Cambiar
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${
-                    analysis.isNewBook 
-                      ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' 
-                      : 'bg-indigo-100 text-indigo-700 border border-indigo-200'
-                  }`}>
-                    {analysis.isNewBook ? '✨ Nueva' : '📚 Existente'}
-                  </span>
-                  <span className="text-base font-bold text-gray-800">{analysis.bookName}</span>
-                </div>
+                
+                {!showBookSelector ? (
+                  <div className="flex items-center gap-2">
+                    <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${
+                      isNewBook 
+                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' 
+                        : 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                    }`}>
+                      {isNewBook ? '✨ Nueva' : '📚 Existente'}
+                    </span>
+                    <span className="text-base font-bold text-gray-800">{selectedBookName}</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Existing books */}
+                    <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
+                      {books.map((book) => (
+                        <button
+                          key={book.id}
+                          onClick={() => handleSelectBook(book)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
+                            selectedBookId === book.id
+                              ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                              : 'bg-white hover:bg-gray-100 border border-gray-200'
+                          }`}
+                        >
+                          <ICONS.Book size={14} />
+                          {book.name}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Create new book */}
+                    <div className="border-t border-gray-200 pt-3">
+                      {!isCreatingNew ? (
+                        <button
+                          onClick={() => setIsCreatingNew(true)}
+                          className="w-full text-left px-3 py-2 rounded-lg text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-2"
+                        >
+                          <ICONS.Plus size={14} />
+                          Crear nueva libreta
+                        </button>
+                      ) : (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={newBookName}
+                            onChange={(e) => setNewBookName(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleCreateNewBook()}
+                            placeholder="Nombre de la nueva libreta..."
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none text-sm"
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleCreateNewBook}
+                              disabled={!newBookName.trim()}
+                              className="flex-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Crear
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsCreatingNew(false);
+                                setNewBookName('');
+                              }}
+                              className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Entry Type */}

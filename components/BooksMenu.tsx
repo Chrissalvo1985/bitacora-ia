@@ -12,19 +12,125 @@ interface BooksMenuProps {
   onSelectBook: (bookId: string) => void;
 }
 
-// Component for moving book to folder
-const BookFolderMenu: React.FC<{ 
+// Component for folder header with rename option
+const FolderHeader: React.FC<{
+  folder: Folder;
+  folderBooksCount: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onRename: (folderId: string, newName: string) => Promise<void>;
+}> = ({ folder, folderBooksCount, isExpanded, onToggle, onRename }) => {
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [newName, setNewName] = useState(folder.name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  const handleRename = async () => {
+    if (newName.trim() && newName.trim() !== folder.name) {
+      await onRename(folder.id, newName.trim());
+    }
+    setIsRenaming(false);
+  };
+
+  if (isRenaming) {
+    return (
+      <div className="p-3 bg-purple-50 rounded-xl border border-purple-200">
+        <p className="text-xs font-semibold text-purple-500 uppercase mb-2">Renombrar carpeta</p>
+        <input
+          ref={inputRef}
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && handleRename()}
+          onBlur={handleRename}
+          className="w-full px-3 py-2 rounded-lg border border-purple-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm mb-2"
+        />
+        <div className="flex gap-2">
+          <button
+            onClick={handleRename}
+            className="flex-1 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-semibold hover:bg-purple-700 transition-colors"
+          >
+            Guardar
+          </button>
+          <button
+            onClick={() => {
+              setIsRenaming(false);
+              setNewName(folder.name);
+            }}
+            className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 transition-colors"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group relative">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between p-3 bg-purple-50 hover:bg-purple-100 rounded-xl border border-purple-200 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <motion.div
+            animate={{ rotate: isExpanded ? 90 : 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ICONS.ChevronRight size={16} className="text-purple-600" />
+          </motion.div>
+          <div 
+            className="w-4 h-4 rounded"
+            style={{ backgroundColor: folder.color || '#9333ea' }}
+          />
+          <span className="font-semibold text-sm text-purple-900">{folder.name}</span>
+          <span className="text-xs text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full">
+            {folderBooksCount}
+          </span>
+        </div>
+      </button>
+      {/* Rename folder button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setNewName(folder.name);
+          setIsRenaming(true);
+        }}
+        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 hover:bg-purple-200 rounded-lg transition-colors text-purple-400 hover:text-purple-600 opacity-0 group-hover:opacity-100"
+        title="Renombrar carpeta"
+      >
+        <ICONS.PenTool size={14} />
+      </button>
+    </div>
+  );
+};
+
+// Component for book options menu (move to folder + rename)
+const BookOptionsMenu: React.FC<{ 
   book: Book; 
   folders: Folder[]; 
-  onMoveToFolder: (bookId: string, folderId: string | null) => Promise<void> 
-}> = ({ book, folders, onMoveToFolder }) => {
+  onMoveToFolder: (bookId: string, folderId: string | null) => Promise<void>;
+  onRename: (bookId: string, newName: string) => Promise<void>;
+}> = ({ book, folders, onMoveToFolder, onRename }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [newName, setNewName] = useState(book.name);
+  const [showFolderMenu, setShowFolderMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setIsRenaming(false);
+        setShowFolderMenu(false);
       }
     };
 
@@ -34,8 +140,24 @@ const BookFolderMenu: React.FC<{
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isRenaming && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isRenaming]);
+
   const handleMoveToFolder = async (folderId: string | null) => {
     await onMoveToFolder(book.id, folderId);
+    setIsOpen(false);
+    setShowFolderMenu(false);
+  };
+
+  const handleRename = async () => {
+    if (newName.trim() && newName.trim() !== book.name) {
+      await onRename(book.id, newName.trim());
+    }
+    setIsRenaming(false);
     setIsOpen(false);
   };
 
@@ -47,36 +169,95 @@ const BookFolderMenu: React.FC<{
           setIsOpen(!isOpen);
         }}
         className="p-1.5 hover:bg-white/80 rounded-lg transition-colors text-gray-400 hover:text-indigo-600"
-        title="Mover a carpeta"
+        title="Opciones"
       >
         <ICONS.Menu size={14} />
       </button>
       
-      {isOpen && (
+      {isOpen && !isRenaming && (
         <div className="absolute right-0 top-8 z-50 bg-white rounded-xl shadow-lg border border-gray-200 py-2 min-w-[180px]">
-          <div className="px-3 py-2 border-b border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase">Mover a carpeta</p>
-          </div>
+          {/* Rename option */}
           <button
-            onClick={() => handleMoveToFolder(null)}
+            onClick={() => {
+              setNewName(book.name);
+              setIsRenaming(true);
+            }}
             className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
           >
-            <ICONS.Book size={14} className="text-gray-400" />
-            Sin carpeta
+            <ICONS.PenTool size={14} className="text-gray-400" />
+            Renombrar
           </button>
-          {folders.map((folder) => (
+          
+          {/* Move to folder option */}
+          <div className="relative">
             <button
-              key={folder.id}
-              onClick={() => handleMoveToFolder(folder.id)}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+              onClick={() => setShowFolderMenu(!showFolderMenu)}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between"
             >
-              <div 
-                className="w-3 h-3 rounded"
-                style={{ backgroundColor: folder.color || '#9333ea' }}
-              />
-              {folder.name}
+              <div className="flex items-center gap-2">
+                <ICONS.ArrowRight size={14} className="text-gray-400" />
+                Mover a carpeta
+              </div>
+              <ICONS.ChevronRight size={14} className="text-gray-400" />
             </button>
-          ))}
+            
+            {showFolderMenu && (
+              <div className="absolute left-full top-0 ml-1 bg-white rounded-xl shadow-lg border border-gray-200 py-2 min-w-[160px]">
+                <button
+                  onClick={() => handleMoveToFolder(null)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <ICONS.Book size={14} className="text-gray-400" />
+                  Sin carpeta
+                </button>
+                {folders.map((folder) => (
+                  <button
+                    key={folder.id}
+                    onClick={() => handleMoveToFolder(folder.id)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <div 
+                      className="w-3 h-3 rounded"
+                      style={{ backgroundColor: folder.color || '#9333ea' }}
+                    />
+                    {folder.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Rename input */}
+      {isOpen && isRenaming && (
+        <div className="absolute right-0 top-8 z-50 bg-white rounded-xl shadow-lg border border-gray-200 p-3 min-w-[220px]">
+          <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Renombrar libreta</p>
+          <input
+            ref={inputRef}
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleRename()}
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm mb-2"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleRename}
+              className="flex-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors"
+            >
+              Guardar
+            </button>
+            <button
+              onClick={() => {
+                setIsRenaming(false);
+                setIsOpen(false);
+              }}
+              className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -90,7 +271,7 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
   selectedBookId,
   onSelectBook,
 }) => {
-  const { books, folders, createBook, createFolder, updateBookFolder, isInitializing } = useBitacora();
+  const { books, folders, createBook, createFolder, updateBookFolder, updateBook, updateFolder, isInitializing } = useBitacora();
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreatingBook, setIsCreatingBook] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -166,6 +347,22 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
   const handleSelectBook = (bookId: string) => {
     onSelectBook(bookId);
     onClose();
+  };
+
+  const handleRenameBook = async (bookId: string, newName: string) => {
+    try {
+      await updateBook(bookId, { name: newName });
+    } catch (error) {
+      console.error('Error renaming book:', error);
+    }
+  };
+
+  const handleRenameFolder = async (folderId: string, newName: string) => {
+    try {
+      await updateFolder(folderId, { name: newName });
+    } catch (error) {
+      console.error('Error renaming folder:', error);
+    }
   };
 
   if (!isOpen) return null;
@@ -392,9 +589,9 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
                               <div className="w-2 h-2 rounded-full bg-indigo-600 flex-shrink-0" />
                             )}
                           </motion.button>
-                          {/* Move to folder menu */}
+                          {/* Book options menu */}
                           <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <BookFolderMenu book={book} folders={folders} onMoveToFolder={updateBookFolder} />
+                            <BookOptionsMenu book={book} folders={folders} onMoveToFolder={updateBookFolder} onRename={handleRenameBook} />
                           </div>
                         </motion.div>
                       );
@@ -427,27 +624,13 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
                 
                 return (
                   <div key={folder.id} className="space-y-2">
-                    <button
-                      onClick={() => toggleFolder(folder.id)}
-                      className="w-full flex items-center justify-between p-3 bg-purple-50 hover:bg-purple-100 rounded-xl border border-purple-200 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <motion.div
-                          animate={{ rotate: isExpanded ? 90 : 0 }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <ICONS.ChevronRight size={16} className="text-purple-600" />
-                        </motion.div>
-                        <div 
-                          className="w-4 h-4 rounded"
-                          style={{ backgroundColor: folder.color || '#9333ea' }}
-                        />
-                        <span className="font-semibold text-sm text-purple-900">{folder.name}</span>
-                        <span className="text-xs text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full">
-                          {folderBooks.length}
-                        </span>
-                      </div>
-                    </button>
+                    <FolderHeader 
+                      folder={folder} 
+                      folderBooksCount={folderBooks.length}
+                      isExpanded={isExpanded}
+                      onToggle={() => toggleFolder(folder.id)}
+                      onRename={handleRenameFolder}
+                    />
                     
                     {isExpanded && (
                       <motion.div
@@ -502,9 +685,9 @@ const BooksMenu: React.FC<BooksMenuProps> = ({
                                   <div className="w-1.5 h-1.5 rounded-full bg-indigo-600 flex-shrink-0" />
                                 )}
                               </motion.button>
-                              {/* Move to folder menu */}
+                              {/* Book options menu */}
                               <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <BookFolderMenu book={book} folders={folders} onMoveToFolder={updateBookFolder} />
+                                <BookOptionsMenu book={book} folders={folders} onMoveToFolder={updateBookFolder} onRename={handleRenameBook} />
                               </div>
                             </motion.div>
                           );

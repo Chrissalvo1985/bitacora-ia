@@ -5,7 +5,7 @@ import { analyzeDocument, DocumentInsight } from '../services/documentAnalysisSe
 import { findRelatedEntry } from '../services/entryMatchingService';
 import * as dataService from '../services/dataService';
 import { initDatabase } from '../services/db';
-import { useAuth } from './AuthContext';
+import { AuthContext } from './AuthContext';
 
 // Simple ID generator
 const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -60,7 +60,10 @@ interface BitacoraContextType {
 const BitacoraContext = createContext<BitacoraContextType | undefined>(undefined);
 
 export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user, isAuthenticated } = useAuth();
+  // Use AuthContext directly to avoid error during HMR
+  const authContext = useContext(AuthContext);
+  const user = authContext?.user ?? null;
+  const isAuthenticated = authContext?.isAuthenticated ?? false;
   const [books, setBooks] = useState<Book[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -163,6 +166,9 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
                 match.completionNotes
               );
             }
+            
+            // Refresh to ensure sync
+            await refreshData();
             
             setIsLoading(false);
             return; // Don't create new entry
@@ -281,6 +287,9 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         await dataService.saveEntry(finalEntry, user.id, analysis);
         setEntries(prev => prev.map(e => e.id === tempId ? finalEntry : e));
+        
+        // Refresh to get proper task IDs from DB
+        await refreshData();
 
         updateBookContext(targetBook.name, targetBook.context, analysis.summary).then(newContext => {
           setBooks(prevBooks => prevBooks.map(b => 
@@ -374,7 +383,12 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
       };
 
       await dataService.saveEntry(finalEntry, user.id, analysis);
+      
+      // Update local state immediately with complete entry
       setEntries(prev => prev.map(e => e.id === tempEntryId ? finalEntry : e));
+
+      // Refresh data from DB to ensure tasks have proper IDs
+      await refreshData();
 
       if (targetBook) {
         updateBookContext(targetBook.name, targetBook.context, editedAnalysis.summary).then(newContext => {

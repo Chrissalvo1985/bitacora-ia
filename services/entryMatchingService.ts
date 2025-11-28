@@ -32,7 +32,7 @@ export const findRelatedEntry = async (
     .map((t, idx) => `Índice: ${idx} | Descripción: ${t.description}${t.assignee ? ` | Responsable: ${t.assignee}` : ''}${t.dueDate ? ` | Fecha: ${t.dueDate}` : ''}`)
     .join('\n');
 
-  const prompt = `Analiza si el siguiente texto del usuario es una ACTUALIZACIÓN de algo existente o una NUEVA entrada.
+  const prompt = `Analiza si el siguiente texto del usuario es una ACTUALIZACIÓN/COMPLETACIÓN de una tarea existente o una NUEVA entrada.
 
 TEXTO DEL USUARIO: "${text}"
 
@@ -42,18 +42,40 @@ ${entriesContext || 'No hay entradas'}
 TAREAS PENDIENTES:
 ${tasksContext || 'No hay tareas pendientes'}
 
-INSTRUCCIONES:
-1. Si el texto indica que algo está COMPLETADO, LISTO, TERMINADO, HECHO, FINALIZADO, etc., busca la tarea o entrada relacionada.
-2. Si el texto menciona algo que ya existe (mismo proyecto, mismo tema, misma persona), podría ser una actualización.
-3. Ejemplos de actualizaciones:
-   - "está listo el modelo BI de Andina" → actualizar tarea relacionada con "modelo BI" o "Andina"
-   - "completé la revisión de KPIs" → actualizar tarea con "revisión KPIs"
-   - "ya envié el documento a Juan" → actualizar tarea con "enviar documento"
-4. Si no hay match claro (confianza < 70%), es una nueva entrada.
-5. IMPORTANTE: Si el texto incluye observaciones, notas o comentarios además de indicar que está completado, extrae esas observaciones. Por ejemplo:
-   - "está listo el modelo BI, observación: necesita revisión final" → completionNotes: "necesita revisión final"
-   - "completé la tarea, nota: se encontró un bug menor" → completionNotes: "se encontró un bug menor"
-   - "listo, pero hay que ajustar el diseño" → completionNotes: "hay que ajustar el diseño"
+INSTRUCCIONES CRÍTICAS - SÉ MUY RESTRICTIVO:
+
+1. SOLO marca shouldUpdate=true si el texto contiene EXPLÍCITAMENTE palabras que indican COMPLETACIÓN:
+   - "está listo", "está terminado", "está hecho", "está completado", "está finalizado"
+   - "ya terminé", "ya completé", "ya hice", "ya envié", "ya mandé", "ya revisé"
+   - "listo", "terminado", "hecho", "completado" (al inicio o final de la oración)
+   - "done", "finished", "ready"
+
+2. NUNCA marques shouldUpdate=true si el texto es:
+   - Una NUEVA información, observación o nota
+   - Una NUEVA tarea o pendiente
+   - Una actualización de estado que NO indica completación
+   - Un comentario general sobre un tema
+   - Una pregunta o duda
+   - Información descriptiva sin indicadores de completación
+
+3. EJEMPLOS DE NUEVAS ENTRADAS (shouldUpdate=false):
+   - "El panel BI tiene un problema" → NUEVA NOTA
+   - "Revisar el documento mañana" → NUEVA TAREA
+   - "Observación: el dashboard muestra datos incorrectos" → NUEVA NOTA
+   - "Nota: Juan comentó sobre el proyecto" → NUEVA NOTA
+   - "Comentario sobre la reunión: fue productiva" → NUEVA NOTA
+   - "Panel de ventas: observación sobre métricas" → NUEVA NOTA (es información, no completación)
+
+4. EJEMPLOS DE ACTUALIZACIONES (shouldUpdate=true):
+   - "Ya terminé el modelo BI de Andina" → ACTUALIZACIÓN
+   - "Listo el documento para Juan" → ACTUALIZACIÓN
+   - "Completé la revisión de KPIs" → ACTUALIZACIÓN
+   - "Ya envié el correo a María" → ACTUALIZACIÓN
+
+5. Si el texto incluye observaciones junto con la completación, extráelas:
+   - "Listo el modelo BI, nota: necesita revisión final" → completionNotes: "necesita revisión final"
+
+6. REGLA DE ORO: En caso de duda, shouldUpdate=false. Es mejor crear una nueva entrada que completar una tarea incorrectamente.
 
 Responde en JSON:
 {
@@ -84,8 +106,8 @@ Responde en JSON:
 
     const data = JSON.parse(content) as MatchResult;
     
-    // Only update if confidence is high enough
-    if (data.confidence < 70) {
+    // Only update if confidence is VERY high (more restrictive)
+    if (data.confidence < 85) {
       return { shouldUpdate: false, confidence: data.confidence, reason: data.reason };
     }
 

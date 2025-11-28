@@ -34,6 +34,7 @@ export interface User {
   createdAt: string;
   lastLogin?: string;
   isAdmin?: boolean;
+  gender?: 'male' | 'female' | 'other';
 }
 
 export interface Session {
@@ -78,6 +79,20 @@ export async function initAuthTables() {
       }
     } catch (error) {
       console.log('Note: is_admin column check skipped:', error);
+    }
+
+    // Add gender column if it doesn't exist (migration)
+    try {
+      const genderColumnExists = await db`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'gender'
+      `;
+      if (genderColumnExists.length === 0) {
+        await db`ALTER TABLE users ADD COLUMN gender TEXT`;
+      }
+    } catch (error) {
+      console.log('Note: gender column check skipped:', error);
     }
 
     // Create sessions table
@@ -211,7 +226,7 @@ export async function loginUser(email: string, password: string): Promise<{ user
 
   // Find user
   const userResult = await db`
-    SELECT id, email, name, password_hash, created_at, last_login, is_active, is_admin
+    SELECT id, email, name, password_hash, created_at, last_login, is_active, is_admin, gender
     FROM users WHERE email = ${sanitizedEmail} LIMIT 1
   `;
 
@@ -263,6 +278,7 @@ export async function loginUser(email: string, password: string): Promise<{ user
     createdAt: userData.created_at ? (userData.created_at instanceof Date ? userData.created_at.toISOString() : String(userData.created_at)) : '',
     lastLogin: userData.last_login ? (userData.last_login instanceof Date ? userData.last_login.toISOString() : String(userData.last_login)) : undefined,
     isAdmin: userData.is_admin || false,
+    gender: userData.gender || undefined,
   };
 
   return { user, token };
@@ -273,7 +289,7 @@ export async function verifySession(token: string): Promise<User | null> {
   const db = requireDb();
 
   const sessionResult = await db`
-    SELECT s.user_id, s.expires_at, u.id, u.email, u.name, u.created_at, u.last_login, u.is_active, u.is_admin
+    SELECT s.user_id, s.expires_at, u.id, u.email, u.name, u.created_at, u.last_login, u.is_active, u.is_admin, u.gender
     FROM sessions s
     JOIN users u ON s.user_id = u.id
     WHERE s.token = ${token} AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = TRUE
@@ -293,6 +309,7 @@ export async function verifySession(token: string): Promise<User | null> {
     createdAt: data.created_at ? (data.created_at instanceof Date ? data.created_at.toISOString() : String(data.created_at)) : '',
     lastLogin: data.last_login ? (data.last_login instanceof Date ? data.last_login.toISOString() : String(data.last_login)) : undefined,
     isAdmin: data.is_admin || false,
+    gender: data.gender || undefined,
   };
 }
 
@@ -306,7 +323,7 @@ export async function logoutUser(token: string): Promise<void> {
 export async function getUserById(userId: string): Promise<User | null> {
   const db = requireDb();
   const result = await db`
-    SELECT id, email, name, created_at, last_login, is_admin
+    SELECT id, email, name, created_at, last_login, is_admin, gender
     FROM users WHERE id = ${userId} AND is_active = TRUE LIMIT 1
   `;
   if (result.length === 0) return null;
@@ -318,11 +335,12 @@ export async function getUserById(userId: string): Promise<User | null> {
     createdAt: data.created_at ? (data.created_at instanceof Date ? data.created_at.toISOString() : String(data.created_at)) : '',
     lastLogin: data.last_login ? (data.last_login instanceof Date ? data.last_login.toISOString() : String(data.last_login)) : undefined,
     isAdmin: data.is_admin || false,
+    gender: data.gender || undefined,
   };
 }
 
 // Update user profile
-export async function updateUser(userId: string, updates: { name?: string; email?: string }): Promise<void> {
+export async function updateUser(userId: string, updates: { name?: string; email?: string; gender?: 'male' | 'female' | 'other' }): Promise<void> {
   const db = requireDb();
   
   if (updates.name) {
@@ -336,6 +354,10 @@ export async function updateUser(userId: string, updates: { name?: string; email
       throw new Error('El email ya está en uso');
     }
     await db`UPDATE users SET email = ${updates.email.toLowerCase()} WHERE id = ${userId}`;
+  }
+
+  if (updates.gender !== undefined) {
+    await db`UPDATE users SET gender = ${updates.gender} WHERE id = ${userId}`;
   }
 }
 
