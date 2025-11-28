@@ -33,7 +33,9 @@ import {
   List,
   Grid3x3,
   ArrowRight,
-  BarChart3
+  BarChart3,
+  Eraser,
+  Users
 } from 'lucide-react';
 import { NoteType } from './types';
 
@@ -73,7 +75,9 @@ export const ICONS = {
   List,
   Grid3x3,
   ArrowRight,
-  BarChart3
+  BarChart3,
+  Eraser,
+  Users
 };
 
 // Estilos más vibrantes y redondeados ("pill" style)

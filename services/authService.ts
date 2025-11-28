@@ -33,6 +33,7 @@ export interface User {
   name: string;
   createdAt: string;
   lastLogin?: string;
+  isAdmin?: boolean;
 }
 
 export interface Session {
@@ -60,9 +61,24 @@ export async function initAuthTables() {
         password_hash TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_login TIMESTAMP,
-        is_active BOOLEAN DEFAULT TRUE
+        is_active BOOLEAN DEFAULT TRUE,
+        is_admin BOOLEAN DEFAULT FALSE
       )
     `;
+
+    // Add is_admin column if it doesn't exist (migration)
+    try {
+      const columnExists = await db`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'is_admin'
+      `;
+      if (columnExists.length === 0) {
+        await db`ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE`;
+      }
+    } catch (error) {
+      console.log('Note: is_admin column check skipped:', error);
+    }
 
     // Create sessions table
     await db`
@@ -195,7 +211,7 @@ export async function loginUser(email: string, password: string): Promise<{ user
 
   // Find user
   const userResult = await db`
-    SELECT id, email, name, password_hash, created_at, last_login, is_active
+    SELECT id, email, name, password_hash, created_at, last_login, is_active, is_admin
     FROM users WHERE email = ${sanitizedEmail} LIMIT 1
   `;
 
@@ -246,6 +262,7 @@ export async function loginUser(email: string, password: string): Promise<{ user
     name: userData.name,
     createdAt: userData.created_at ? (userData.created_at instanceof Date ? userData.created_at.toISOString() : String(userData.created_at)) : '',
     lastLogin: userData.last_login ? (userData.last_login instanceof Date ? userData.last_login.toISOString() : String(userData.last_login)) : undefined,
+    isAdmin: userData.is_admin || false,
   };
 
   return { user, token };
@@ -256,7 +273,7 @@ export async function verifySession(token: string): Promise<User | null> {
   const db = requireDb();
 
   const sessionResult = await db`
-    SELECT s.user_id, s.expires_at, u.id, u.email, u.name, u.created_at, u.last_login, u.is_active
+    SELECT s.user_id, s.expires_at, u.id, u.email, u.name, u.created_at, u.last_login, u.is_active, u.is_admin
     FROM sessions s
     JOIN users u ON s.user_id = u.id
     WHERE s.token = ${token} AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = TRUE
@@ -275,6 +292,7 @@ export async function verifySession(token: string): Promise<User | null> {
     name: data.name,
     createdAt: data.created_at ? (data.created_at instanceof Date ? data.created_at.toISOString() : String(data.created_at)) : '',
     lastLogin: data.last_login ? (data.last_login instanceof Date ? data.last_login.toISOString() : String(data.last_login)) : undefined,
+    isAdmin: data.is_admin || false,
   };
 }
 
@@ -288,10 +306,19 @@ export async function logoutUser(token: string): Promise<void> {
 export async function getUserById(userId: string): Promise<User | null> {
   const db = requireDb();
   const result = await db`
-    SELECT id, email, name, created_at, last_login
+    SELECT id, email, name, created_at, last_login, is_admin
     FROM users WHERE id = ${userId} AND is_active = TRUE LIMIT 1
   `;
-  return result[0] as User || null;
+  if (result.length === 0) return null;
+  const data = result[0] as any;
+  return {
+    id: data.id,
+    email: data.email,
+    name: data.name,
+    createdAt: data.created_at ? (data.created_at instanceof Date ? data.created_at.toISOString() : String(data.created_at)) : '',
+    lastLogin: data.last_login ? (data.last_login instanceof Date ? data.last_login.toISOString() : String(data.last_login)) : undefined,
+    isAdmin: data.is_admin || false,
+  };
 }
 
 // Update user profile
@@ -340,5 +367,90 @@ export async function changePassword(userId: string, oldPassword: string, newPas
 
   // Invalidate all sessions (force re-login)
   await db`DELETE FROM sessions WHERE user_id = ${userId}`;
+}
+
+// Create user (admin only)
+export async function createUserAsAdmin(adminUserId: string, email: string, password: string, name: string, isAdmin: boolean = false): Promise<User> {
+  const db = requireDb();
+
+  // Verify admin
+  const adminResult = await db`
+    SELECT is_admin FROM users WHERE id = ${adminUserId} AND is_active = TRUE LIMIT 1
+  `;
+  if (adminResult.length === 0 || !adminResult[0].is_admin) {
+    throw new Error('No tienes permisos de administrador');
+  }
+
+  // Use same validation as registerUser
+  const sanitizedEmail = email.toLowerCase().trim();
+  const sanitizedName = name.trim().slice(0, 100);
+  const sanitizedPassword = password.trim();
+
+  if (!sanitizedEmail || !sanitizedEmail.includes('@') || sanitizedEmail.length > 255) {
+    throw new Error('Email inválido');
+  }
+
+  if (!sanitizedPassword || sanitizedPassword.length < 8) {
+    throw new Error('La contraseña debe tener al menos 8 caracteres');
+  }
+
+  if (!sanitizedName || sanitizedName.length < 2) {
+    throw new Error('El nombre debe tener al menos 2 caracteres');
+  }
+
+  // Check if user exists
+  const existing = await db`SELECT id FROM users WHERE email = ${sanitizedEmail} LIMIT 1`;
+  if (existing.length > 0) {
+    throw new Error('El email ya está registrado');
+  }
+
+  const userId = crypto.randomUUID();
+  const passwordHash = await hashPassword(password);
+
+  // Create user
+  await db`
+    INSERT INTO users (id, email, name, password_hash, is_admin)
+    VALUES (${userId}, ${sanitizedEmail}, ${sanitizedName}, ${passwordHash}, ${isAdmin})
+  `;
+
+  const userResult = await db`SELECT id, email, name, created_at, last_login, is_admin FROM users WHERE id = ${userId} LIMIT 1`;
+  const userData = userResult[0] as any;
+  
+  return {
+    id: userData.id,
+    email: userData.email,
+    name: userData.name,
+    createdAt: userData.created_at ? (userData.created_at instanceof Date ? userData.created_at.toISOString() : String(userData.created_at)) : '',
+    lastLogin: userData.last_login ? (userData.last_login instanceof Date ? userData.last_login.toISOString() : String(userData.last_login)) : undefined,
+    isAdmin: userData.is_admin || false,
+  };
+}
+
+// Get all users (admin only)
+export async function getAllUsers(adminUserId: string): Promise<User[]> {
+  const db = requireDb();
+
+  // Verify admin
+  const adminResult = await db`
+    SELECT is_admin FROM users WHERE id = ${adminUserId} AND is_active = TRUE LIMIT 1
+  `;
+  if (adminResult.length === 0 || !adminResult[0].is_admin) {
+    throw new Error('No tienes permisos de administrador');
+  }
+
+  const result = await db`
+    SELECT id, email, name, created_at, last_login, is_admin, is_active
+    FROM users
+    ORDER BY created_at DESC
+  `;
+
+  return result.map((data: any) => ({
+    id: data.id,
+    email: data.email,
+    name: data.name,
+    createdAt: data.created_at ? (data.created_at instanceof Date ? data.created_at.toISOString() : String(data.created_at)) : '',
+    lastLogin: data.last_login ? (data.last_login instanceof Date ? data.last_login.toISOString() : String(data.last_login)) : undefined,
+    isAdmin: data.is_admin || false,
+  }));
 }
 

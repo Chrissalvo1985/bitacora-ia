@@ -477,55 +477,196 @@ export async function searchEntries(query: string, filters?: { userId?: string; 
     throw new Error('User ID is required for search');
   }
   
-  if (filters?.bookId && filters?.type) {
-    const result = await db`
-      SELECT DISTINCT e.* FROM entries e
-      WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
-        AND e.user_id = ${userId}
-        AND e.book_id = ${filters.bookId}
-        AND e.type = ${filters.type}
-        ${filters.dateFrom ? db`AND e.created_at >= ${filters.dateFrom}` : db``}
-        ${filters.dateTo ? db`AND e.created_at <= ${filters.dateTo}` : db``}
-      ORDER BY e.created_at DESC
-    `;
-    return result as DbEntry[];
+  // If we have bookId or type filters, use simpler query (no joins needed)
+  if (filters?.bookId || filters?.type) {
+    // Build query with all conditions explicitly
+    if (filters.bookId && filters.type) {
+      if (filters.dateFrom && filters.dateTo) {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.book_id = ${filters.bookId}
+            AND e.type = ${filters.type}
+            AND e.created_at >= ${filters.dateFrom}
+            AND e.created_at <= ${filters.dateTo}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      } else if (filters.dateFrom) {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.book_id = ${filters.bookId}
+            AND e.type = ${filters.type}
+            AND e.created_at >= ${filters.dateFrom}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      } else if (filters.dateTo) {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.book_id = ${filters.bookId}
+            AND e.type = ${filters.type}
+            AND e.created_at <= ${filters.dateTo}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      } else {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.book_id = ${filters.bookId}
+            AND e.type = ${filters.type}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      }
+    } else if (filters.bookId) {
+      if (filters.dateFrom && filters.dateTo) {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.book_id = ${filters.bookId}
+            AND e.created_at >= ${filters.dateFrom}
+            AND e.created_at <= ${filters.dateTo}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      } else if (filters.dateFrom) {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.book_id = ${filters.bookId}
+            AND e.created_at >= ${filters.dateFrom}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      } else if (filters.dateTo) {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.book_id = ${filters.bookId}
+            AND e.created_at <= ${filters.dateTo}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      } else {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.book_id = ${filters.bookId}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      }
+    } else if (filters.type) {
+      if (filters.dateFrom && filters.dateTo) {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.type = ${filters.type}
+            AND e.created_at >= ${filters.dateFrom}
+            AND e.created_at <= ${filters.dateTo}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      } else if (filters.dateFrom) {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.type = ${filters.type}
+            AND e.created_at >= ${filters.dateFrom}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      } else if (filters.dateTo) {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.type = ${filters.type}
+            AND e.created_at <= ${filters.dateTo}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      } else {
+        return await db`
+          SELECT DISTINCT e.* FROM entries e
+          WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
+            AND e.user_id = ${userId}
+            AND e.type = ${filters.type}
+          ORDER BY e.created_at DESC
+        ` as DbEntry[];
+      }
+    }
   }
   
-  if (filters?.bookId) {
-    const result = await db`
+  // Full search in entries, tasks, and entities
+  if (filters?.dateFrom && filters?.dateTo) {
+    return await db`
       SELECT DISTINCT e.* FROM entries e
-      WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
-        AND e.user_id = ${userId}
-        AND e.book_id = ${filters.bookId}
-        ${filters.dateFrom ? db`AND e.created_at >= ${filters.dateFrom}` : db``}
-        ${filters.dateTo ? db`AND e.created_at <= ${filters.dateTo}` : db``}
+      LEFT JOIN tasks t ON t.entry_id = e.id
+      LEFT JOIN entities ent ON ent.entry_id = e.id
+      WHERE e.user_id = ${userId}
+        AND (
+          e.original_text ILIKE ${searchPattern} 
+          OR e.summary ILIKE ${searchPattern}
+          OR t.description ILIKE ${searchPattern}
+          OR t.assignee ILIKE ${searchPattern}
+          OR ent.name ILIKE ${searchPattern}
+        )
+        AND e.created_at >= ${filters.dateFrom}
+        AND e.created_at <= ${filters.dateTo}
       ORDER BY e.created_at DESC
-    `;
-    return result as DbEntry[];
-  }
-  
-  if (filters?.type) {
-    const result = await db`
+    ` as DbEntry[];
+  } else if (filters?.dateFrom) {
+    return await db`
       SELECT DISTINCT e.* FROM entries e
-      WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
-        AND e.user_id = ${userId}
-        AND e.type = ${filters.type}
-        ${filters.dateFrom ? db`AND e.created_at >= ${filters.dateFrom}` : db``}
-        ${filters.dateTo ? db`AND e.created_at <= ${filters.dateTo}` : db``}
+      LEFT JOIN tasks t ON t.entry_id = e.id
+      LEFT JOIN entities ent ON ent.entry_id = e.id
+      WHERE e.user_id = ${userId}
+        AND (
+          e.original_text ILIKE ${searchPattern} 
+          OR e.summary ILIKE ${searchPattern}
+          OR t.description ILIKE ${searchPattern}
+          OR t.assignee ILIKE ${searchPattern}
+          OR ent.name ILIKE ${searchPattern}
+        )
+        AND e.created_at >= ${filters.dateFrom}
       ORDER BY e.created_at DESC
-    `;
-    return result as DbEntry[];
+    ` as DbEntry[];
+  } else if (filters?.dateTo) {
+    return await db`
+      SELECT DISTINCT e.* FROM entries e
+      LEFT JOIN tasks t ON t.entry_id = e.id
+      LEFT JOIN entities ent ON ent.entry_id = e.id
+      WHERE e.user_id = ${userId}
+        AND (
+          e.original_text ILIKE ${searchPattern} 
+          OR e.summary ILIKE ${searchPattern}
+          OR t.description ILIKE ${searchPattern}
+          OR t.assignee ILIKE ${searchPattern}
+          OR ent.name ILIKE ${searchPattern}
+        )
+        AND e.created_at <= ${filters.dateTo}
+      ORDER BY e.created_at DESC
+    ` as DbEntry[];
+  } else {
+    return await db`
+      SELECT DISTINCT e.* FROM entries e
+      LEFT JOIN tasks t ON t.entry_id = e.id
+      LEFT JOIN entities ent ON ent.entry_id = e.id
+      WHERE e.user_id = ${userId}
+        AND (
+          e.original_text ILIKE ${searchPattern} 
+          OR e.summary ILIKE ${searchPattern}
+          OR t.description ILIKE ${searchPattern}
+          OR t.assignee ILIKE ${searchPattern}
+          OR ent.name ILIKE ${searchPattern}
+        )
+      ORDER BY e.created_at DESC
+    ` as DbEntry[];
   }
-  
-  const result = await db`
-    SELECT DISTINCT e.* FROM entries e
-    WHERE (e.original_text ILIKE ${searchPattern} OR e.summary ILIKE ${searchPattern})
-      AND e.user_id = ${userId}
-      ${filters?.dateFrom ? db`AND e.created_at >= ${filters.dateFrom}` : db``}
-      ${filters?.dateTo ? db`AND e.created_at <= ${filters.dateTo}` : db``}
-    ORDER BY e.created_at DESC
-  `;
-  return result as DbEntry[];
 }
 
 export default sql;

@@ -10,6 +10,8 @@ const CaptureInput: React.FC = () => {
   const [text, setText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isPenMode, setIsPenMode] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
   const { addEntry, isLoading, updateTaskStatus, refreshData, confirmEntryWithEdits, entries, deleteEntry } = useBitacora();
   const [attachment, setAttachment] = useState<Attachment | undefined>(undefined);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -22,6 +24,8 @@ const CaptureInput: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if ('webkitSpeechRecognition' in window) {
@@ -155,6 +159,42 @@ const CaptureInput: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    // If in pen mode, convert canvas to image
+    if (isPenMode && canvasRef.current) {
+      const imageData = convertCanvasToImage();
+      if (imageData) {
+        const drawingAttachment: Attachment = {
+          type: 'image',
+          mimeType: 'image/png',
+          data: imageData,
+          fileName: 'dibujo.png'
+        };
+        
+        // Reset UI
+        clearCanvas();
+        setIsPenMode(false);
+        setIsExpanded(false);
+        
+        const result = await addEntry('', drawingAttachment, false);
+        
+        if (result && 'analysisSummary' in result && result.analysisSummary) {
+          const summary = result.analysisSummary as any;
+          if (summary.tempEntryId) {
+            setTempEntryId(summary.tempEntryId);
+            const { tempEntryId, ...summaryForModal } = summary;
+            setAnalysisSummary(summaryForModal);
+            setShowSummaryModal(true);
+          }
+        }
+        
+        if (result && 'shouldShowModal' in result && result.shouldShowModal && result.insights) {
+          setDocumentInsights(result.insights);
+          setCurrentFileName('dibujo.png');
+        }
+        return;
+      }
+    }
+    
     if (!text.trim() && !attachment) return;
     
     const contentText = text;
@@ -166,6 +206,8 @@ const CaptureInput: React.FC = () => {
     setAttachment(undefined);
     if (fileInputRef.current) fileInputRef.current.value = '';
     setIsExpanded(false);
+    setIsPenMode(false);
+    clearCanvas();
     
     const result = await addEntry(contentText, contentAttachment, false);
     
@@ -240,6 +282,155 @@ const CaptureInput: React.FC = () => {
     }
   };
 
+  // Canvas drawing functions
+  const getCanvasCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if ('touches' in e) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top
+      };
+    }
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
+  };
+
+  const drawOnCanvas = (x: number, y: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1f2937';
+
+    if (lastPointRef.current) {
+      ctx.beginPath();
+      ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+    lastPointRef.current = { x, y };
+  };
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'pen' || e.pointerType === 'touch') {
+      setIsPenMode(true);
+    }
+    if (isPenMode || e.pointerType === 'pen' || e.pointerType === 'touch') {
+      setIsDrawing(true);
+      const coords = getCanvasCoordinates(e);
+      if (coords) {
+        lastPointRef.current = coords;
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.beginPath();
+            ctx.moveTo(coords.x, coords.y);
+          }
+        }
+      }
+    }
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isDrawing && (isPenMode || e.pointerType === 'pen' || e.pointerType === 'touch')) {
+      const coords = getCanvasCoordinates(e);
+      if (coords) {
+        drawOnCanvas(coords.x, coords.y);
+      }
+    }
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsDrawing(false);
+    lastPointRef.current = null;
+  };
+
+  const handleCanvasTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    setIsPenMode(true);
+    setIsDrawing(true);
+    const coords = getCanvasCoordinates(e);
+    if (coords) {
+      lastPointRef.current = coords;
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.beginPath();
+          ctx.moveTo(coords.x, coords.y);
+        }
+      }
+    }
+  };
+
+  const handleCanvasTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (isDrawing) {
+      const coords = getCanvasCoordinates(e);
+      if (coords) {
+        drawOnCanvas(coords.x, coords.y);
+      }
+    }
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    lastPointRef.current = null;
+  };
+
+  const convertCanvasToImage = (): string | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    return canvas.toDataURL('image/png');
+  };
+
+  // Initialize canvas
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      ctx.strokeStyle = '#1f2937';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+    };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    return () => window.removeEventListener('resize', resizeCanvas);
+  }, [isPenMode]);
+
+  // Detect pen/stylus input
+  useEffect(() => {
+    const handlePointerDown = (e: PointerEvent) => {
+      if (e.pointerType === 'pen' || e.pointerType === 'touch') {
+        setIsPenMode(true);
+        setIsExpanded(true);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, []);
+
   return (
     <div className={`
       relative bg-white rounded-2xl shadow-xl shadow-indigo-100/50 border border-indigo-50 transition-all duration-300 overflow-hidden
@@ -277,19 +468,53 @@ const CaptureInput: React.FC = () => {
       )}
 
       <div className={`flex-1 ${isExpanded ? 'mb-3' : ''}`}>
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onFocus={() => setIsExpanded(true)}
-          onKeyDown={handleKeyDown}
-          placeholder={isExpanded ? "Escribe o dicta... (ej: 'Acordamos con Juan revisar el proyecto mañana')" : "✨ ¿Qué tienes en mente?"}
-          className={`
-            w-full resize-none outline-none bg-transparent placeholder-gray-400 text-gray-800 font-medium
-            ${isExpanded ? 'h-24 md:h-28 text-base leading-relaxed' : 'h-7 md:h-8 py-0.5 overflow-hidden text-sm md:text-base'}
-          `}
-          style={{ fontSize: '16px' }} // Prevents iOS zoom on focus
-        />
+        {isPenMode && isExpanded ? (
+          <div className="relative">
+            <canvas
+              ref={canvasRef}
+              onMouseDown={handleCanvasMouseDown}
+              onMouseMove={handleCanvasMouseMove}
+              onMouseUp={handleCanvasMouseUp}
+              onMouseLeave={handleCanvasMouseUp}
+              onTouchStart={handleCanvasTouchStart}
+              onTouchMove={handleCanvasTouchMove}
+              onTouchEnd={handleCanvasMouseUp}
+              className="w-full h-64 md:h-80 border-2 border-gray-200 rounded-xl cursor-crosshair bg-white touch-none"
+              style={{ touchAction: 'none' }}
+            />
+            <button
+              onClick={() => {
+                setIsPenMode(false);
+                clearCanvas();
+              }}
+              className="absolute top-2 right-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+            >
+              <ICONS.X size={14} />
+              Modo texto
+            </button>
+            <button
+              onClick={clearCanvas}
+              className="absolute top-2 left-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+            >
+              <ICONS.Eraser size={14} />
+              Limpiar
+            </button>
+          </div>
+        ) : (
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onFocus={() => setIsExpanded(true)}
+            onKeyDown={handleKeyDown}
+            placeholder={isExpanded ? "Escribe o dicta... (ej: 'Acordamos con Juan revisar el proyecto mañana')" : "✨ ¿Qué tienes en mente?"}
+            className={`
+              w-full resize-none outline-none bg-transparent placeholder-gray-400 text-gray-800 font-medium
+              ${isExpanded ? 'h-24 md:h-28 text-base leading-relaxed' : 'h-7 md:h-8 py-0.5 overflow-hidden text-sm md:text-base'}
+            `}
+            style={{ fontSize: '16px' }} // Prevents iOS zoom on focus
+          />
+        )}
       </div>
 
       <div className={`flex items-center justify-between ${!isExpanded ? 'flex-shrink-0' : ''}`}>
@@ -330,11 +555,11 @@ const CaptureInput: React.FC = () => {
             )}
             <button
                 onClick={handleSubmit}
-                disabled={(!text.trim() && !attachment) || isLoading}
+                disabled={(!text.trim() && !attachment && !isPenMode) || isLoading}
                 className={`
                     flex items-center justify-center gap-2 rounded-2xl font-bold transition-all duration-300 active:scale-95
                     ${isExpanded ? 'px-6 py-3 md:px-8 md:py-3.5 lg:px-10 lg:py-4 text-base md:text-lg' : 'p-3 md:p-4'}
-                    ${(text.trim() || attachment)
+                    ${(text.trim() || attachment || isPenMode)
                         ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-lg hover:shadow-indigo-500/30 transform hover:-translate-y-0.5' 
                         : 'bg-gray-100 text-gray-300 cursor-not-allowed'}
                 `}

@@ -127,7 +127,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
             <ICONS.BarChart3 size={16} />
             Resumen
           </h3>
-          <div className="grid grid-cols-4 gap-2 md:gap-3">
+          <div className="grid grid-cols-3 gap-2 md:gap-3">
             <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm">
               <p className="text-xl md:text-2xl font-bold text-gray-800">{totalEntries}</p>
               <p className="text-xs text-gray-500 font-medium">Entradas</p>
@@ -139,10 +139,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
             <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm">
               <p className="text-xl md:text-2xl font-bold text-emerald-600">{completedTasks}</p>
               <p className="text-xs text-gray-500 font-medium">Completadas</p>
-            </div>
-            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm">
-              <p className="text-xl md:text-2xl font-bold text-purple-600">{completionRate}%</p>
-              <p className="text-xs text-gray-500 font-medium">Progreso</p>
             </div>
           </div>
         </div>
