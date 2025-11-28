@@ -93,18 +93,46 @@ export async function loadAllBooks(userId: string): Promise<Book[]> {
 export async function loadAllEntries(userId: string): Promise<Entry[]> {
   try {
     const dbEntries = await db.getAllEntries(userId);
-    const entries: Entry[] = [];
     
-    for (const dbEntry of dbEntries) {
-      const tasks = await db.getTasksByEntryId(dbEntry.id);
-      const entities = await db.getEntitiesByEntryId(dbEntry.id);
-      
-      entries.push(dbEntryToEntry(
-        dbEntry,
-        tasks.map(dbTaskToTaskItem),
-        entities.map(dbEntityToEntity)
-      ));
+    if (dbEntries.length === 0) {
+      return [];
     }
+    
+    // Optimize: Load all tasks and entities in batch instead of per-entry queries
+    const entryIds = dbEntries.map(e => e.id);
+    const [allTasks, allEntities] = await Promise.all([
+      db.getTasksByEntryIds(entryIds),
+      db.getEntitiesByEntryIds(entryIds),
+    ]);
+    
+    // Group tasks and entities by entry_id
+    const tasksByEntry = new Map<string, TaskItem[]>();
+    const entitiesByEntry = new Map<string, Entity[]>();
+    
+    allTasks.forEach(task => {
+      const entryId = task.entry_id;
+      if (!tasksByEntry.has(entryId)) {
+        tasksByEntry.set(entryId, []);
+      }
+      tasksByEntry.get(entryId)!.push(dbTaskToTaskItem(task));
+    });
+    
+    allEntities.forEach(entity => {
+      const entryId = entity.entry_id;
+      if (!entitiesByEntry.has(entryId)) {
+        entitiesByEntry.set(entryId, []);
+      }
+      entitiesByEntry.get(entryId)!.push(dbEntityToEntity(entity));
+    });
+    
+    // Build entries with pre-loaded tasks and entities
+    const entries: Entry[] = dbEntries.map(dbEntry => 
+      dbEntryToEntry(
+        dbEntry,
+        tasksByEntry.get(dbEntry.id) || [],
+        entitiesByEntry.get(dbEntry.id) || []
+      )
+    );
     
     return entries;
   } catch (error) {

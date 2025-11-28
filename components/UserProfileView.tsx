@@ -6,7 +6,7 @@ import { updateUser, changePassword, createUserAsAdmin, getAllUsers } from '../s
 import { neon } from '@neondatabase/serverless';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale/es';
-import { useNotifications } from './NotificationManager';
+import { useNotifications } from '../hooks/useNotifications';
 
 // Get database URL
 function getDatabaseUrl(): string | undefined {

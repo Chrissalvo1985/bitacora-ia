@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ICONS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
@@ -13,7 +13,7 @@ interface NotificationManagerProps {
   showBanner?: boolean;
 }
 
-const NotificationManager: React.FC<NotificationManagerProps> = ({ showBanner = true }) => {
+const NotificationManager: React.FC<NotificationManagerProps> = memo(({ showBanner = true }) => {
   const { entries } = useBitacora();
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [showPermissionBanner, setShowPermissionBanner] = useState(false);
@@ -143,34 +143,6 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ showBanner = 
       )}
     </AnimatePresence>
   );
-};
+});
 
 export default NotificationManager;
-
-// Hook for using notifications in other components
-export function useNotifications() {
-  const [permission, setPermission] = useState<NotificationPermission>('default');
-  const [isSupported, setIsSupported] = useState(false);
-
-  useEffect(() => {
-    setIsSupported(isNotificationSupported());
-    if (isNotificationSupported()) {
-      setPermission(getNotificationPermission());
-    }
-  }, []);
-
-  const requestPermission = useCallback(async () => {
-    const newPermission = await requestNotificationPermission();
-    setPermission(newPermission);
-    return newPermission;
-  }, []);
-
-  return {
-    isSupported,
-    permission,
-    isEnabled: permission === 'granted',
-    requestPermission,
-    scheduler: notificationScheduler,
-  };
-}
-

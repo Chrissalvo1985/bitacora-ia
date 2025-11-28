@@ -6,6 +6,7 @@ import { findRelatedEntry } from '../services/entryMatchingService';
 import * as dataService from '../services/dataService';
 import { initDatabase } from '../services/db';
 import { AuthContext } from './AuthContext';
+import { CacheService, CACHE_KEYS } from '../services/cacheService';
 
 // Simple ID generator
 const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -93,22 +94,41 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
     initialize();
   }, [isAuthenticated, user?.id]);
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async (useCache = true) => {
     if (!user?.id) return;
     
     try {
+      // Optimistic loading: Load from cache first for instant UI
+      if (useCache) {
+        const cachedBooks = CacheService.get<Book[]>(`${CACHE_KEYS.BOOKS}_${user.id}`);
+        const cachedEntries = CacheService.get<Entry[]>(`${CACHE_KEYS.ENTRIES}_${user.id}`);
+        const cachedFolders = CacheService.get<Folder[]>(`${CACHE_KEYS.FOLDERS}_${user.id}`);
+        
+        if (cachedBooks) setBooks(cachedBooks);
+        if (cachedEntries) setEntries(cachedEntries);
+        if (cachedFolders) setFolders(cachedFolders);
+      }
+      
+      // Then fetch fresh data in background
       const [loadedBooks, loadedEntries, loadedFolders] = await Promise.all([
         dataService.loadAllBooks(user.id),
         dataService.loadAllEntries(user.id),
         dataService.loadAllFolders(user.id),
       ]);
+      
+      // Update state with fresh data
       setBooks(loadedBooks);
       setEntries(loadedEntries);
       setFolders(loadedFolders);
+      
+      // Update cache
+      CacheService.set(`${CACHE_KEYS.BOOKS}_${user.id}`, loadedBooks);
+      CacheService.set(`${CACHE_KEYS.ENTRIES}_${user.id}`, loadedEntries);
+      CacheService.set(`${CACHE_KEYS.FOLDERS}_${user.id}`, loadedFolders);
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
-  };
+  }, [user?.id]);
 
   const getBookName = useCallback((id: string) => books.find(b => b.id === id)?.name || 'Desconocido', [books]);
 
@@ -206,6 +226,17 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
       setEntries(prev => [tempEntry, ...prev]);
 
       // 4. Call OpenAI Analysis
+      // Log attachment info for debugging
+      if (attachment) {
+        console.log('📎 Attachment info:', {
+          type: attachment.type,
+          fileName: attachment.fileName,
+          hasExtractedText: !!attachment.extractedText,
+          extractedTextLength: attachment.extractedText?.length || 0,
+          extractedTextPreview: attachment.extractedText?.substring(0, 100) || 'N/A'
+        });
+      }
+      
       const analysis = await analyzeEntry(text, books, attachment);
 
       // 3. Find or Create Book - Improved matching

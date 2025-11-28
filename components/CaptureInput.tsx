@@ -198,10 +198,16 @@ const CaptureInput: React.FC = () => {
           if (isPDF) {
             setIsExtractingText(true);
             try {
+              console.log('Starting PDF text extraction...');
               extractedText = await extractTextFromPDF(base64String);
-              console.log(`PDF text extracted: ${extractedText.length} chars`);
+              console.log(`✅ PDF text extracted successfully: ${extractedText.length} characters`);
+              console.log('First 200 chars:', extractedText.substring(0, 200));
+              
+              if (!extractedText || extractedText.trim().length === 0) {
+                console.warn('⚠️ PDF text extraction returned empty string');
+              }
             } catch (err) {
-              console.warn('Could not extract PDF text:', err);
+              console.error('❌ Could not extract PDF text:', err);
               // Continue without extracted text - the file will still be saved
             } finally {
               setIsExtractingText(false);

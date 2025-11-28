@@ -4,6 +4,7 @@ import { ICONS, TYPE_STYLES, TYPE_LABELS } from '../constants';
 import { NoteType, SearchFilters } from '../types';
 import EntryCard from './EntryCard';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useThrottle } from '../hooks/useThrottle';
 
 const ITEMS_PER_PAGE = 15;
 const ITEMS_PER_PAGE_MOBILE = 8;
@@ -17,12 +18,16 @@ const SearchView: React.FC = memo(() => {
   const [currentPage, setCurrentPage] = useState(1);
   const [isMobile, setIsMobile] = useState(false);
   
+  // Throttled resize handler for better performance
+  const checkSize = useThrottle(() => {
+    setIsMobile(window.innerWidth < 768);
+  }, 150);
+
   useEffect(() => {
-    const checkSize = () => setIsMobile(window.innerWidth < 768);
     checkSize();
     window.addEventListener('resize', checkSize);
     return () => window.removeEventListener('resize', checkSize);
-  }, []);
+  }, [checkSize]);
 
   const handleSearch = useCallback(async () => {
     if (!query.trim()) {
@@ -45,6 +50,21 @@ const SearchView: React.FC = memo(() => {
       setIsSearching(false);
     }
   }, [query, filters, searchEntries]);
+
+  // Debounced search effect - search after user stops typing for 300ms
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      setCurrentPage(1);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      handleSearch();
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [query, filters, handleSearch]);
 
   const itemsPerPage = isMobile ? ITEMS_PER_PAGE_MOBILE : ITEMS_PER_PAGE;
   const paginatedResults = results.slice(0, currentPage * itemsPerPage);

@@ -29,13 +29,17 @@ export const analyzeEntry = async (
   existingBooks: Book[],
   attachment?: Attachment
 ): Promise<OpenAIResponse> => {
-  // Validate and sanitize input
-  if (!text || text.trim().length === 0) {
+  // Validate input - allow empty text if there's an attachment with content
+  const hasAttachmentContent = attachment?.extractedText && attachment.extractedText.trim().length > 0;
+  
+  if ((!text || text.trim().length === 0) && !hasAttachmentContent) {
     throw new Error('El texto no puede estar vacío');
   }
   
   // Limit text length for security and cost control
-  const sanitizedText = text.trim().slice(0, 10000);
+  // If there's PDF content, allow more text since PDF is the main content
+  const maxTextLength = hasAttachmentContent ? 5000 : 10000;
+  const sanitizedText = (text || '').trim().slice(0, maxTextLength);
   
   // Build detailed books context with names and descriptions
   const booksContext = existingBooks.map(b => 
@@ -152,9 +156,32 @@ IMPORTANTE FINAL:
 - Si el texto contiene múltiples elementos del mismo tema, TODO debe ir en UNA SOLA entrada en UNA SOLA libreta.
 - El "targetBookName" debe coincidir EXACTAMENTE con el nombre de una libreta existente (comparando sin distinguir mayúsculas/minúsculas) o ser un nombre nuevo.`;
 
-  const userPrompt = `Analiza este texto del usuario:
+  // Adjust prompt based on whether there's text or just attachment
+  const hasUserText = sanitizedText && sanitizedText.trim().length > 10;
+  const hasPDFWithText = attachment?.type === 'document' && attachment.extractedText && attachment.extractedText.trim().length > 0;
+  
+  const userPrompt = hasUserText 
+    ? `Analiza este texto del usuario:
 
 "${sanitizedText}"
+
+INSTRUCCIONES ESPECÍFICAS:
+1. Determina si es INFORMACIÓN/ANOTACIÓN (NOTE sin tareas) o contiene TAREAS REALES (TASK con tareas).
+2. Asigna a la libreta correcta basándote en el NOMBRE y CONTEXTO de las libretas existentes.
+3. Si es información sobre múltiples elementos del mismo tema, TODO debe ir en UNA SOLA entrada en UNA SOLA libreta.
+4. Si es solo información descriptiva (correos, reportes, estados), NO crees tareas.`
+    : hasPDFWithText
+    ? `El usuario ha subido un documento PDF sin texto adicional. Analiza ÚNICAMENTE el contenido del PDF que se proporcionará a continuación.
+
+INSTRUCCIONES ESPECÍFICAS:
+1. Analiza TODO el contenido del PDF como si fuera el texto principal del usuario.
+2. Determina si es INFORMACIÓN/ANOTACIÓN (NOTE sin tareas) o contiene TAREAS REALES (TASK con tareas).
+3. Asigna a la libreta correcta basándote en el NOMBRE y CONTEXTO de las libretas existentes.
+4. Extrae toda la información relevante, tareas, decisiones, ideas o riesgos del PDF.
+5. Si es solo información descriptiva (correos, reportes, estados), NO crees tareas.`
+    : `Analiza este texto del usuario:
+
+"${sanitizedText || '(Sin texto adicional)'}"
 
 INSTRUCCIONES ESPECÍFICAS:
 1. Determina si es INFORMACIÓN/ANOTACIÓN (NOTE sin tareas) o contiene TAREAS REALES (TASK con tareas).
@@ -186,15 +213,41 @@ INSTRUCCIONES ESPECÍFICAS:
         } as any);
       } else if (attachment.type === 'document' && attachment.mimeType === 'application/pdf') {
         // For PDFs, check if we have extracted text
-        if (attachment.extractedText) {
+        if (attachment.extractedText && attachment.extractedText.trim().length > 0) {
+          const pdfText = attachment.extractedText.trim();
+          // Increase limit to 50000 chars for PDFs (GPT-4o-mini can handle this)
+          const textToSend = pdfText.length > 50000 
+            ? pdfText.slice(0, 50000) + '\n\n[... contenido truncado - documento muy largo ...]' 
+            : pdfText;
+          
           messages.push({
             role: 'user',
-            content: `DOCUMENTO PDF ADJUNTO: "${attachment.fileName}"\n\nCONTENIDO EXTRAÍDO DEL PDF:\n---\n${attachment.extractedText.slice(0, 15000)}\n---\n\nAnaliza el contenido del documento junto con el texto del usuario para crear una entrada completa. El documento se guardará como adjunto de referencia.`
+            content: `📄 DOCUMENTO PDF ADJUNTO: "${attachment.fileName}"
+
+═══════════════════════════════════════════════════════════
+CONTENIDO COMPLETO DEL PDF (EXTRAÍDO):
+═══════════════════════════════════════════════════════════
+
+${textToSend}
+
+═══════════════════════════════════════════════════════════
+
+⚠️ INSTRUCCIONES CRÍTICAS:
+1. El contenido del PDF arriba es el CONTEXTO PRINCIPAL. Analízalo completamente.
+2. El texto del usuario (si lo hay) es complementario o contexto adicional.
+3. Crea la entrada basándote PRINCIPALMENTE en el contenido del PDF.
+4. Extrae tareas, decisiones, ideas, riesgos o información relevante del PDF.
+5. Si el usuario escribió algo, úsalo como contexto adicional, pero el PDF es la fuente principal.
+
+El documento se guardará como referencia, pero la entrada debe reflejar TODO el contenido relevante del PDF.`
           });
+          
+          console.log(`📄 Sending PDF content to AI: ${textToSend.length} characters`);
         } else {
+          console.warn('⚠️ PDF attachment has no extracted text');
           messages.push({
             role: 'user',
-            content: `Hay un archivo PDF adjunto llamado "${attachment.fileName}". Si el usuario mencionó algo sobre este archivo en el texto, tenlo en cuenta. El PDF se guardará como adjunto de referencia.`
+            content: `Hay un archivo PDF adjunto llamado "${attachment.fileName}", pero no se pudo extraer su contenido. Si el usuario mencionó algo sobre este archivo en el texto, tenlo en cuenta. El PDF se guardará como adjunto de referencia.`
           });
         }
       }

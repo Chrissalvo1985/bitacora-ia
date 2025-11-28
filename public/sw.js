@@ -1,18 +1,106 @@
 // Service Worker for Bitácora IA
-// Handles push notifications and background sync
+// Handles push notifications, background sync, and asset caching
 
-const CACHE_NAME = 'bitacora-v1';
+const CACHE_NAME = 'bitacora-v2';
+const STATIC_CACHE_NAME = 'bitacora-static-v2';
 
-// Install event
+// Assets to cache on install
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/icon-192.png',
+  '/icon-96.png',
+];
+
+// Install event - Cache static assets
 self.addEventListener('install', (event) => {
   console.log('Service Worker: Installing...');
-  self.skipWaiting();
+  event.waitUntil(
+    caches.open(STATIC_CACHE_NAME).then((cache) => {
+      console.log('Caching static assets');
+      return cache.addAll(STATIC_ASSETS).catch((err) => {
+        console.warn('Some assets failed to cache:', err);
+      });
+    }).then(() => {
+      return self.skipWaiting();
+    })
+  );
 });
 
-// Activate event
+// Activate event - Clean old caches
 self.addEventListener('activate', (event) => {
   console.log('Service Worker: Activated');
-  event.waitUntil(clients.claim());
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME && cacheName !== STATIC_CACHE_NAME) {
+            console.log('Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => {
+      return clients.claim();
+    })
+  );
+});
+
+// Fetch event - Cache strategy: Network first, fallback to cache
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+  
+  // Skip non-GET requests
+  if (request.method !== 'GET') return;
+  
+  // Skip external requests
+  if (url.origin !== self.location.origin) return;
+  
+  // Skip API calls (they should always be fresh)
+  if (url.pathname.startsWith('/api/')) return;
+  
+  // For static assets, use cache-first strategy
+  if (url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot)$/)) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) {
+          return cached;
+        }
+        return fetch(request).then((response) => {
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(STATIC_CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
+  
+  // For HTML pages, use network-first strategy
+  if (request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request).then((cached) => {
+            return cached || new Response('Offline', { status: 503 });
+          });
+        })
+    );
+  }
 });
 
 // Handle notification clicks

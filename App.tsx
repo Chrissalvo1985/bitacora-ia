@@ -1,12 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
-import BookView from './components/BookView';
-import TaskView from './components/TaskView';
-import SearchView from './components/SearchView';
-import SummaryView from './components/SummaryView';
-import AIQueryView from './components/AIQueryView';
-import UserProfileView from './components/UserProfileView';
 import LoginView from './components/LoginView';
 import BooksMenu from './components/BooksMenu';
 import NotificationManager from './components/NotificationManager';
@@ -14,6 +8,21 @@ import { ICONS } from './constants';
 import { BitacoraProvider, useBitacora } from './context/BitacoraContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// Lazy load heavy components for better initial load performance
+const BookView = lazy(() => import('./components/BookView'));
+const TaskView = lazy(() => import('./components/TaskView'));
+const SearchView = lazy(() => import('./components/SearchView'));
+const SummaryView = lazy(() => import('./components/SummaryView'));
+const AIQueryView = lazy(() => import('./components/AIQueryView'));
+const UserProfileView = lazy(() => import('./components/UserProfileView'));
+
+// Loading fallback component
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-[400px]">
+    <ICONS.Loader2 className="animate-spin text-indigo-600" size={32} />
+  </div>
+);
 
 // Bottom Navigation Component for Mobile
 const BottomNav = ({ activeView, setActiveView, onSearchClick, onSummaryClick, onQueryClick }: any) => {
@@ -101,15 +110,41 @@ const Layout = () => {
         onSelectBook={handleSelectBook}
         onNavigateToEntry={handleNavigateToEntry}
       />,
-      book: selectedBookId ? <BookView bookId={selectedBookId} /> : <Dashboard 
-        onSelectBook={handleSelectBook}
-        onNavigateToEntry={handleNavigateToEntry}
-      />,
-      tasks: <TaskView />,
-      search: <SearchView />,
-      summary: <SummaryView />,
-      query: <AIQueryView />,
-      profile: <UserProfileView />,
+      book: selectedBookId ? (
+        <Suspense fallback={<LoadingFallback />}>
+          <BookView bookId={selectedBookId} />
+        </Suspense>
+      ) : (
+        <Dashboard 
+          onSelectBook={handleSelectBook}
+          onNavigateToEntry={handleNavigateToEntry}
+        />
+      ),
+      tasks: (
+        <Suspense fallback={<LoadingFallback />}>
+          <TaskView />
+        </Suspense>
+      ),
+      search: (
+        <Suspense fallback={<LoadingFallback />}>
+          <SearchView />
+        </Suspense>
+      ),
+      summary: (
+        <Suspense fallback={<LoadingFallback />}>
+          <SummaryView />
+        </Suspense>
+      ),
+      query: (
+        <Suspense fallback={<LoadingFallback />}>
+          <AIQueryView />
+        </Suspense>
+      ),
+      profile: (
+        <Suspense fallback={<LoadingFallback />}>
+          <UserProfileView />
+        </Suspense>
+      ),
     };
 
     return views[activeView] || <Dashboard 

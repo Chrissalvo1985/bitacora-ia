@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
 import { ICONS } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useThrottle } from '../hooks/useThrottle';
 
 const ITEMS_PER_PAGE = 20;
 const ITEMS_PER_PAGE_MOBILE = 10;
@@ -27,12 +28,16 @@ const TaskView: React.FC = memo(() => {
     });
   }, []);
 
+  // Throttled resize handler for better performance
+  const checkSize = useThrottle(() => {
+    setIsMobile(window.innerWidth < 768);
+  }, 150);
+
   useEffect(() => {
-    const checkSize = () => setIsMobile(window.innerWidth < 768);
     checkSize();
     window.addEventListener('resize', checkSize);
     return () => window.removeEventListener('resize', checkSize);
-  }, []);
+  }, [checkSize]);
 
   // Flatten entries to tasks
   const allTasks = useMemo(() => {

@@ -378,6 +378,14 @@ export async function getTasksByEntryId(entryId: string): Promise<DbTask[]> {
   return result as DbTask[];
 }
 
+// Batch query for multiple entries (optimized)
+export async function getTasksByEntryIds(entryIds: string[]): Promise<DbTask[]> {
+  if (entryIds.length === 0) return [];
+  const db = requireDb();
+  const result = await db`SELECT * FROM tasks WHERE entry_id = ANY(${entryIds}) ORDER BY entry_id, created_at ASC`;
+  return result as DbTask[];
+}
+
 export async function getAllTasks(filters?: { isDone?: boolean; bookId?: string }): Promise<DbTask[]> {
   const db = requireDb();
   if (filters?.isDone !== undefined && filters?.bookId) {
@@ -454,6 +462,14 @@ export async function deleteTask(id: string): Promise<void> {
 export async function getEntitiesByEntryId(entryId: string): Promise<DbEntity[]> {
   const db = requireDb();
   const result = await db`SELECT * FROM entities WHERE entry_id = ${entryId}`;
+  return result as DbEntity[];
+}
+
+// Batch query for multiple entries (optimized)
+export async function getEntitiesByEntryIds(entryIds: string[]): Promise<DbEntity[]> {
+  if (entryIds.length === 0) return [];
+  const db = requireDb();
+  const result = await db`SELECT * FROM entities WHERE entry_id = ANY(${entryIds}) ORDER BY entry_id`;
   return result as DbEntity[];
 }
 
