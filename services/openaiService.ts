@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { Book, NoteType, Attachment } from '../types';
+import { Book, NoteType, Attachment, MultiTopicAnalysis, TopicEntry, TaskItem } from '../types';
 
 // Get OpenAI API key securely
 function getOpenAIApiKey(): string {
@@ -451,6 +451,310 @@ Responde de forma clara, directa y útil en ESPAÑOL. Si la información no est�
   } catch (error) {
     console.error('Error querying bitacora', error);
     return 'Error al procesar la consulta.';
+  }
+};
+
+// ============================================================================
+// MULTI-TOPIC ANALYSIS
+// ============================================================================
+
+export const analyzeMultiTopicEntry = async (
+  text: string,
+  existingBooks: Book[],
+  existingTasks: TaskItem[],
+  attachment?: Attachment
+): Promise<MultiTopicAnalysis> => {
+  // Validate input
+  const hasAttachmentContent = attachment?.extractedText && attachment.extractedText.trim().length > 0;
+  
+  if ((!text || text.trim().length === 0) && !hasAttachmentContent) {
+    throw new Error('El texto no puede estar vacío');
+  }
+  
+  const maxTextLength = hasAttachmentContent ? 5000 : 10000;
+  const sanitizedText = (text || '').trim().slice(0, maxTextLength);
+  
+  // Build detailed books context
+  const booksContext = existingBooks.map(b => 
+    `- "${b.name}"${b.context ? ` (Contexto: ${b.context})` : ''}`
+  ).join('\n');
+
+  // Build pending tasks context
+  const pendingTasksContext = existingTasks
+    .filter(t => !t.isDone)
+    .map(t => `- "${t.description}"${t.assignee ? ` (asignado a: ${t.assignee})` : ''}`)
+    .join('\n');
+
+  const systemPrompt = `Eres un asistente personal IA extremadamente inteligente para gestionar notas de trabajo.
+
+Fecha Actual: ${new Date().toLocaleDateString('es-ES')}
+
+LIBRETAS EXISTENTES (con su contexto):
+${booksContext || 'No hay libretas existentes'}
+
+TAREAS PENDIENTES ACTUALES:
+${pendingTasksContext || 'No hay tareas pendientes'}
+
+═══════════════════════════════════════════════════════════
+INSTRUCCIONES CRÍTICAS - ANÁLISIS MULTI-TEMA
+═══════════════════════════════════════════════════════════
+
+El usuario puede ingresar una ÚNICA anotación que contenga MÚLTIPLES TEMAS diferentes.
+Por ejemplo, en una reunión de equipo puede anotar:
+- Una tarea del Proyecto A
+- Un acuerdo del Proyecto B  
+- Que se completó una tarea del Proyecto C
+- Una idea para el Proyecto D
+
+TU TRABAJO:
+1. DETECTAR si hay múltiples temas/proyectos distintos en la nota
+2. SEPARAR el contenido por tema/proyecto
+3. ASOCIAR cada parte a su libreta correspondiente
+4. DETECTAR si se menciona que una tarea existente se COMPLETÓ
+5. CREAR nuevas tareas donde corresponda
+
+REGLAS DE DETECCIÓN MULTI-TEMA:
+- Si el texto menciona múltiples proyectos/clientes/temas diferentes → es MULTI-TEMA
+- Si el texto habla de UN SOLO proyecto con múltiples aspectos → NO es multi-tema (todo a una libreta)
+- Palabras clave que indican cambio de tema: "respecto a", "sobre", "en cuanto a", "por otro lado", "también", nombres de proyectos diferentes
+
+REGLAS DE ASIGNACIÓN A LIBRETAS:
+- Compara el contenido con el NOMBRE y CONTEXTO de cada libreta existente
+- Si menciona un proyecto/tema que coincide con una libreta existente → usa esa libreta
+- Si es un tema nuevo → sugiere nombre para nueva libreta
+
+DETECCIÓN DE TAREAS COMPLETADAS (MUY IMPORTANTE):
+- Si el texto indica que algo se "terminó", "completó", "cerró", "finalizó" → marca la tarea como completada
+- Busca en las TAREAS PENDIENTES ACTUALES si alguna coincide con lo mencionado
+- Extrae observaciones/notas de cierre si las hay
+
+CLASIFICACIÓN DE TIPO POR TEMA:
+- NOTE: Información, observaciones, estados actuales
+- TASK: Acciones pendientes a realizar
+- DECISION: Acuerdos tomados, "acordamos", "se decidió"
+- IDEA: Propuestas, sugerencias
+- RISK: Problemas, riesgos identificados
+
+═══════════════════════════════════════════════════════════
+
+Responde SIEMPRE en formato JSON con este esquema exacto:
+{
+  "isMultiTopic": true/false,
+  "overallContext": "descripción general de la nota",
+  "suggestedPriority": "LOW|MEDIUM|HIGH",
+  "topics": [
+    {
+      "targetBookName": "nombre exacto de libreta existente o nuevo nombre",
+      "isNewBook": true/false,
+      "type": "NOTE|TASK|DECISION|IDEA|RISK",
+      "content": "el contenido original que corresponde a este tema",
+      "summary": "resumen del contenido para este tema",
+      "tasks": [
+        {
+          "description": "descripción de nueva tarea",
+          "assignee": "responsable si se menciona",
+          "dueDate": "YYYY-MM-DD si se menciona",
+          "priority": "LOW|MEDIUM|HIGH"
+        }
+      ],
+      "entities": [
+        {"name": "nombre", "type": "PERSON|COMPANY|PROJECT|TOPIC"}
+      ],
+      "taskActions": [
+        {
+          "action": "complete",
+          "taskDescription": "descripción de tarea existente que se completó",
+          "completionNotes": "observaciones del cierre"
+        }
+      ]
+    }
+  ]
+}
+
+EJEMPLOS:
+
+Ejemplo 1 - MULTI-TEMA:
+Input: "En la reunión acordamos que el proyecto Alpha avanza bien y se terminó la fase de diseño. Por otro lado, respecto al cliente Beta, hay que enviarles el presupuesto esta semana. También surgió una idea para el producto Gamma: agregar notificaciones push."
+
+Output:
+{
+  "isMultiTopic": true,
+  "overallContext": "Notas de reunión con actualizaciones de múltiples proyectos",
+  "suggestedPriority": "MEDIUM",
+  "topics": [
+    {
+      "targetBookName": "Proyecto Alpha",
+      "isNewBook": false,
+      "type": "DECISION",
+      "content": "En la reunión acordamos que el proyecto Alpha avanza bien y se terminó la fase de diseño",
+      "summary": "Avance positivo del proyecto. Fase de diseño completada.",
+      "tasks": [],
+      "entities": [{"name": "Proyecto Alpha", "type": "PROJECT"}],
+      "taskActions": [
+        {
+          "action": "complete",
+          "taskDescription": "Fase de diseño",
+          "completionNotes": "Completada según reunión"
+        }
+      ]
+    },
+    {
+      "targetBookName": "Cliente Beta",
+      "isNewBook": false,
+      "type": "TASK",
+      "content": "respecto al cliente Beta, hay que enviarles el presupuesto esta semana",
+      "summary": "Pendiente envío de presupuesto",
+      "tasks": [
+        {
+          "description": "Enviar presupuesto a Cliente Beta",
+          "priority": "HIGH"
+        }
+      ],
+      "entities": [{"name": "Cliente Beta", "type": "COMPANY"}],
+      "taskActions": []
+    },
+    {
+      "targetBookName": "Producto Gamma",
+      "isNewBook": false,
+      "type": "IDEA",
+      "content": "surgió una idea para el producto Gamma: agregar notificaciones push",
+      "summary": "Propuesta de agregar notificaciones push al producto",
+      "tasks": [],
+      "entities": [{"name": "Producto Gamma", "type": "PROJECT"}],
+      "taskActions": []
+    }
+  ]
+}
+
+Ejemplo 2 - TEMA ÚNICO:
+Input: "Revisé los paneles BI: el de ventas tiene un error en el filtro de fechas, el de supervisores funciona bien, y el de marketing necesita actualizar los KPIs."
+
+Output:
+{
+  "isMultiTopic": false,
+  "overallContext": "Revisión de paneles BI",
+  "suggestedPriority": "MEDIUM",
+  "topics": [
+    {
+      "targetBookName": "Paneles BI",
+      "isNewBook": false,
+      "type": "NOTE",
+      "content": "Revisé los paneles BI: el de ventas tiene un error en el filtro de fechas, el de supervisores funciona bien, y el de marketing necesita actualizar los KPIs",
+      "summary": "Revisión de paneles BI. Ventas: error en filtro de fechas. Supervisores: funcionando. Marketing: pendiente actualizar KPIs.",
+      "tasks": [],
+      "entities": [{"name": "Paneles BI", "type": "PROJECT"}],
+      "taskActions": []
+    }
+  ]
+}`;
+
+  const userPrompt = `Analiza esta anotación y detecta si contiene múltiples temas que deben ir a diferentes libretas:
+
+"${sanitizedText}"
+
+INSTRUCCIONES:
+1. Detecta si hay múltiples proyectos/temas/clientes diferentes
+2. Si los hay, separa el contenido por tema
+3. Asigna cada parte a su libreta correspondiente
+4. Detecta si alguna tarea existente debe marcarse como completada
+5. Crea nuevas tareas solo donde sea necesario`;
+
+  try {
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+
+    // Add attachment if present
+    if (attachment) {
+      if (attachment.type === 'image') {
+        const base64Data = attachment.data.includes(',') ? attachment.data.split(',')[1] : attachment.data;
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Analiza también esta imagen adjunta. Puede contener información de múltiples temas.' },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${attachment.mimeType};base64,${base64Data}`
+              }
+            }
+          ]
+        } as any);
+      } else if (attachment.type === 'document' && attachment.extractedText) {
+        const pdfText = attachment.extractedText.trim();
+        const textToSend = pdfText.length > 50000 
+          ? pdfText.slice(0, 50000) + '\n\n[... contenido truncado ...]' 
+          : pdfText;
+        
+        messages.push({
+          role: 'user',
+          content: `📄 DOCUMENTO PDF ADJUNTO: "${attachment.fileName}"\n\nCONTENIDO:\n${textToSend}\n\nAnaliza este documento buscando múltiples temas que deban ir a diferentes libretas.`
+        });
+      }
+    }
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages,
+      response_format: { type: 'json_object' },
+      temperature: 0.5,
+      max_tokens: 3000,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No response from OpenAI');
+    }
+
+    const data = JSON.parse(content) as MultiTopicAnalysis;
+    
+    // Sanitize and validate response
+    return {
+      isMultiTopic: data.isMultiTopic || false,
+      overallContext: (data.overallContext || 'Nota procesada').slice(0, 500),
+      suggestedPriority: data.suggestedPriority || 'MEDIUM',
+      topics: (data.topics || []).map(topic => ({
+        targetBookName: (topic.targetBookName || 'Bandeja de Entrada').slice(0, 100),
+        isNewBook: topic.isNewBook || false,
+        type: topic.type || NoteType.NOTE,
+        content: (topic.content || '').slice(0, 2000),
+        summary: (topic.summary || '').slice(0, 1000),
+        tasks: (topic.tasks || []).slice(0, 10).map(t => ({
+          description: t.description?.slice(0, 500) || '',
+          assignee: t.assignee?.slice(0, 100),
+          dueDate: t.dueDate?.slice(0, 10),
+          priority: t.priority || 'MEDIUM',
+        })),
+        entities: (topic.entities || []).slice(0, 20).map(e => ({
+          name: e.name?.slice(0, 100) || '',
+          type: e.type || 'TOPIC',
+        })),
+        taskActions: (topic.taskActions || []).slice(0, 10).map(ta => ({
+          action: ta.action || 'complete',
+          taskDescription: ta.taskDescription?.slice(0, 500) || '',
+          completionNotes: ta.completionNotes?.slice(0, 500),
+        })),
+      })),
+    };
+  } catch (error) {
+    console.error('Multi-topic Analysis Error:', error);
+    // Fallback to single topic
+    return {
+      isMultiTopic: false,
+      overallContext: sanitizedText,
+      suggestedPriority: 'MEDIUM',
+      topics: [{
+        targetBookName: 'Bandeja de Entrada',
+        isNewBook: true,
+        type: NoteType.NOTE,
+        content: sanitizedText,
+        summary: sanitizedText.slice(0, 200),
+        tasks: [],
+        entities: [],
+        taskActions: [],
+      }],
+    };
   }
 };
 

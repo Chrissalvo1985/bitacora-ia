@@ -102,3 +102,30 @@ export interface WeeklySummary {
   patterns?: string[];
   generatedAt: number;
 }
+
+// Multi-topic analysis types
+export interface TaskAction {
+  action: 'complete' | 'update';
+  taskDescription: string; // Description to match existing task
+  completionNotes?: string; // Notes when completing
+  updates?: { assignee?: string; dueDate?: string; priority?: string }; // Updates to apply
+}
+
+export interface TopicEntry {
+  targetBookName: string;
+  targetBookId?: string; // ID if matched to existing book
+  isNewBook: boolean;
+  type: NoteType;
+  content: string; // The specific content for this topic
+  summary: string; // AI-generated summary for this topic
+  tasks: { description: string; assignee?: string; dueDate?: string; priority?: string }[];
+  entities: { name: string; type: string }[];
+  taskActions: TaskAction[]; // Actions on existing tasks (complete, update)
+}
+
+export interface MultiTopicAnalysis {
+  isMultiTopic: boolean; // Whether multiple topics were detected
+  topics: TopicEntry[];
+  overallContext: string; // Overall context/description of the note
+  suggestedPriority: 'LOW' | 'MEDIUM' | 'HIGH';
+}

@@ -3,6 +3,7 @@ import { useBitacora } from '../context/BitacoraContext';
 import { ICONS } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useThrottle } from '../hooks/useThrottle';
+import ConfirmDialog from './ConfirmDialog';
 
 const ITEMS_PER_PAGE = 20;
 const ITEMS_PER_PAGE_MOBILE = 10;
@@ -15,6 +16,30 @@ const TaskView: React.FC = memo(() => {
   const [editingTask, setEditingTask] = useState<{ entryId: string; taskIndex: number; field: 'assignee' | 'dueDate' } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  
+  // Confirm dialog state for completing tasks
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    entryId: string;
+    taskIndex: number;
+    taskDescription: string;
+  }>({ isOpen: false, entryId: '', taskIndex: -1, taskDescription: '' });
+
+  const handleConfirmComplete = useCallback(() => {
+    if (confirmDialog.entryId && confirmDialog.taskIndex >= 0) {
+      toggleTask(confirmDialog.entryId, confirmDialog.taskIndex);
+    }
+    setConfirmDialog({ isOpen: false, entryId: '', taskIndex: -1, taskDescription: '' });
+  }, [confirmDialog, toggleTask]);
+
+  const showCompleteConfirm = useCallback((entryId: string, taskIndex: number, taskDescription: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      entryId,
+      taskIndex,
+      taskDescription: taskDescription.length > 60 ? taskDescription.substring(0, 60) + '...' : taskDescription
+    });
+  }, []);
   
   const toggleTaskExpand = useCallback((taskKey: string) => {
     setExpandedTasks(prev => {
@@ -196,9 +221,10 @@ const TaskView: React.FC = memo(() => {
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleTask(task.entryId, task.taskIndex);
+                                showCompleteConfirm(task.entryId, task.taskIndex, task.description);
                               }}
                               className="mt-0.5 md:mt-1 text-gray-300 hover:text-indigo-500 transition-all hover:scale-110 flex-shrink-0"
+                              title="Marcar como completada"
                             >
                               <div className="w-5 h-5 md:w-6 md:h-6 border-2 border-current rounded-lg" />
                             </button>
@@ -400,6 +426,18 @@ const TaskView: React.FC = memo(() => {
           )}
         </>
       )}
+      
+      {/* Confirm Dialog for completing tasks */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, entryId: '', taskIndex: -1, taskDescription: '' })}
+        onConfirm={handleConfirmComplete}
+        title="¿Completar misión?"
+        message={`¿Marcar como completada: "${confirmDialog.taskDescription}"?`}
+        confirmText="✓ Completar"
+        cancelText="No, cancelar"
+        variant="success"
+      />
     </div>
   );
 });

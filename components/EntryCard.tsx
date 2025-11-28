@@ -3,14 +3,33 @@ import { Entry, EntryStatus, NoteType } from '../types';
 import { ICONS, TYPE_STYLES, TYPE_ICONS, TYPE_LABELS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import ConfirmDialog from './ConfirmDialog';
 
 const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, compact = false }) => {
   const { toggleTask, deleteEntry, getBookName } = useBitacora();
   const bookName = getBookName(entry.bookId);
   const [isExpanded, setIsExpanded] = useState(false);
   
+  // Confirm dialogs state
+  const [confirmTask, setConfirmTask] = useState<{ isOpen: boolean; taskIndex: number; description: string }>({
+    isOpen: false, taskIndex: -1, description: ''
+  });
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleConfirmTaskComplete = useCallback(() => {
+    if (confirmTask.taskIndex >= 0) {
+      toggleTask(entry.id, confirmTask.taskIndex);
+    }
+    setConfirmTask({ isOpen: false, taskIndex: -1, description: '' });
+  }, [confirmTask, toggleTask, entry.id]);
+
+  const handleConfirmDelete = useCallback(() => {
+    deleteEntry(entry.id);
+    setConfirmDelete(false);
+  }, [deleteEntry, entry.id]);
+  
   // Auto-expand if it has tasks or attachment
-  const hasDetails = entry.tasks.length > 0 || entry.attachment || entry.entities.length > 0;
+  const hasDetails = entry.tasks.length > 0 || entry.entities.length > 0;
 
   if (entry.status === EntryStatus.PROCESSING) {
     return (
@@ -102,11 +121,12 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
             <button 
               onClick={(e) => {
                 e.stopPropagation();
-                deleteEntry(entry.id);
+                setConfirmDelete(true);
               }}
               className="p-2 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+              title="Eliminar entrada"
             >
-              <ICONS.X size={18} />
+              <ICONS.Trash2 size={18} />
             </button>
           </div>
         </div>
@@ -147,9 +167,18 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleTask(entry.id, idx);
+                                if (!task.isDone) {
+                                  const desc = task.description.length > 50 
+                                    ? task.description.substring(0, 50) + '...' 
+                                    : task.description;
+                                  setConfirmTask({ isOpen: true, taskIndex: idx, description: desc });
+                                } else {
+                                  // Allow un-completing without confirmation
+                                  toggleTask(entry.id, idx);
+                                }
                               }}
                               className={`mt-0.5 flex-shrink-0 transition-all duration-200 ${task.isDone ? 'text-emerald-600' : 'text-gray-300 hover:text-indigo-500 hover:scale-110'}`}
+                              title={task.isDone ? 'Desmarcar tarea' : 'Completar tarea'}
                             >
                               {task.isDone ? (
                                 <div className="relative">
@@ -223,6 +252,30 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Confirm Dialog - Complete Task */}
+      <ConfirmDialog
+        isOpen={confirmTask.isOpen}
+        onClose={() => setConfirmTask({ isOpen: false, taskIndex: -1, description: '' })}
+        onConfirm={handleConfirmTaskComplete}
+        title="¿Completar tarea?"
+        message={`¿Marcar como completada: "${confirmTask.description}"?`}
+        confirmText="✓ Completar"
+        cancelText="No, cancelar"
+        variant="success"
+      />
+
+      {/* Confirm Dialog - Delete Entry */}
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleConfirmDelete}
+        title="¿Eliminar entrada?"
+        message="Esta acción no se puede deshacer. ¿Estás seguro de que deseas eliminar esta entrada?"
+        confirmText="Sí, eliminar"
+        cancelText="No, conservar"
+        variant="danger"
+      />
     </motion.div>
   );
 }, (prevProps, nextProps) => {

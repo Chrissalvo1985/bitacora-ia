@@ -37,7 +37,10 @@ import {
   Eraser,
   Users,
   PenTool,
-  Bell
+  Bell,
+  AlertCircle,
+  Info,
+  Trash2
 } from 'lucide-react';
 import { NoteType } from './types';
 
@@ -81,7 +84,10 @@ export const ICONS = {
   Eraser,
   Users,
   PenTool,
-  Bell
+  Bell,
+  AlertCircle,
+  Info,
+  Trash2
 };
 
 // Estilos más vibrantes y redondeados ("pill" style)
