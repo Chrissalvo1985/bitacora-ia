@@ -9,9 +9,9 @@ const ITEMS_PER_PAGE = 20;
 const ITEMS_PER_PAGE_MOBILE = 10;
 
 const TaskView: React.FC = memo(() => {
-  const { entries, getBookName, toggleTask, updateTaskFields } = useBitacora();
+  const { entries, getBookName, toggleTask, updateTaskFields, deleteTask } = useBitacora();
   const [currentPage, setCurrentPage] = useState(1);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [sortBy, setSortBy] = useState<'date' | 'priority' | 'book'>('date');
   const [editingTask, setEditingTask] = useState<{ entryId: string; taskIndex: number; field: 'assignee' | 'dueDate' } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -25,6 +25,14 @@ const TaskView: React.FC = memo(() => {
     taskDescription: string;
   }>({ isOpen: false, entryId: '', taskIndex: -1, taskDescription: '' });
 
+  // Confirm dialog state for deleting tasks
+  const [deleteDialog, setDeleteDialog] = useState<{
+    isOpen: boolean;
+    entryId: string;
+    taskIndex: number;
+    taskDescription: string;
+  }>({ isOpen: false, entryId: '', taskIndex: -1, taskDescription: '' });
+
   const handleConfirmComplete = useCallback(() => {
     if (confirmDialog.entryId && confirmDialog.taskIndex >= 0) {
       toggleTask(confirmDialog.entryId, confirmDialog.taskIndex);
@@ -32,8 +40,24 @@ const TaskView: React.FC = memo(() => {
     setConfirmDialog({ isOpen: false, entryId: '', taskIndex: -1, taskDescription: '' });
   }, [confirmDialog, toggleTask]);
 
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteDialog.entryId && deleteDialog.taskIndex >= 0) {
+      deleteTask(deleteDialog.entryId, deleteDialog.taskIndex);
+    }
+    setDeleteDialog({ isOpen: false, entryId: '', taskIndex: -1, taskDescription: '' });
+  }, [deleteDialog, deleteTask]);
+
   const showCompleteConfirm = useCallback((entryId: string, taskIndex: number, taskDescription: string) => {
     setConfirmDialog({
+      isOpen: true,
+      entryId,
+      taskIndex,
+      taskDescription: taskDescription.length > 60 ? taskDescription.substring(0, 60) + '...' : taskDescription
+    });
+  }, []);
+
+  const showDeleteConfirm = useCallback((entryId: string, taskIndex: number, taskDescription: string) => {
+    setDeleteDialog({
       isOpen: true,
       entryId,
       taskIndex,
@@ -91,14 +115,53 @@ const TaskView: React.FC = memo(() => {
   }, [entries, getBookName, sortBy]);
 
   const itemsPerPage = isMobile ? ITEMS_PER_PAGE_MOBILE : ITEMS_PER_PAGE;
-  const paginatedTasks = allTasks.slice(0, currentPage * itemsPerPage);
-  const hasMore = paginatedTasks.length < allTasks.length;
-
-  const loadMore = useCallback(() => {
-    if (hasMore) {
-      setCurrentPage(prev => prev + 1);
+  const totalPages = Math.max(1, Math.ceil(allTasks.length / itemsPerPage));
+  
+  // Reset page if current page is out of bounds or itemsPerPage changes
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
     }
-  }, [hasMore]);
+  }, [currentPage, totalPages, itemsPerPage]);
+  
+  // Calculate pagination - recalculate when itemsPerPage changes
+  const validCurrentPage = useMemo(() => {
+    return Math.min(Math.max(1, currentPage), totalPages);
+  }, [currentPage, totalPages]);
+  
+  const startIndex = useMemo(() => {
+    return (validCurrentPage - 1) * itemsPerPage;
+  }, [validCurrentPage, itemsPerPage]);
+  
+  const endIndex = useMemo(() => {
+    return Math.min(startIndex + itemsPerPage, allTasks.length);
+  }, [startIndex, itemsPerPage, allTasks.length]);
+  
+  const paginatedTasks = useMemo(() => {
+    if (allTasks.length === 0) return [];
+    // Force pagination - always slice
+    const sliced = allTasks.slice(startIndex, endIndex);
+    return sliced;
+  }, [allTasks, startIndex, endIndex]);
+
+  const goToPage = useCallback((page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [totalPages]);
+
+  const goToNextPage = useCallback(() => {
+    if (currentPage < totalPages) {
+      goToPage(currentPage + 1);
+    }
+  }, [currentPage, totalPages, goToPage]);
+
+  const goToPrevPage = useCallback(() => {
+    if (currentPage > 1) {
+      goToPage(currentPage - 1);
+    }
+  }, [currentPage, goToPage]);
 
   const handleStartEdit = useCallback((entryId: string, taskIndex: number, field: 'assignee' | 'dueDate', currentValue?: string) => {
     setEditingTask({ entryId, taskIndex, field });
@@ -158,8 +221,15 @@ const TaskView: React.FC = memo(() => {
           </div>
           
           {allTasks.length > 0 && (
-            <div className="text-xs md:text-sm text-gray-500 mb-3 md:mb-4 px-1">
-              {allTasks.length} {allTasks.length === 1 ? 'misión pendiente' : 'misiones pendientes'}
+            <div className="flex items-center justify-between mb-3 md:mb-4 px-1">
+              <div className="text-xs md:text-sm text-gray-500">
+                {allTasks.length} {allTasks.length === 1 ? 'misión pendiente' : 'misiones pendientes'}
+              </div>
+              {totalPages > 1 && (
+                <div className="text-xs md:text-sm text-gray-500">
+                  Página {currentPage} de {totalPages}
+                </div>
+              )}
             </div>
           )}
       </div>
@@ -245,6 +315,16 @@ const TaskView: React.FC = memo(() => {
                                       Media
                                     </span>
                                   )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      showDeleteConfirm(task.entryId, task.taskIndex, task.description);
+                                    }}
+                                    className="p-1 md:p-2 hover:bg-rose-50 rounded-lg transition-colors text-gray-300 hover:text-rose-500"
+                                    title="Eliminar misión"
+                                  >
+                                    <ICONS.Trash2 size={14} className="md:w-4 md:h-4" />
+                                  </button>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -408,20 +488,68 @@ const TaskView: React.FC = memo(() => {
             })}
           </div>
           
-          {hasMore && (
-            <div className="mt-4 md:mt-6 flex justify-center">
-              <button
-                onClick={loadMore}
-                className="px-4 md:px-6 py-2 md:py-3 bg-white border border-gray-200 rounded-xl text-xs md:text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-all shadow-sm"
-              >
-                Cargar más ({allTasks.length - paginatedTasks.length} restantes) ⬇️
-              </button>
-            </div>
-          )}
-          
-          {!hasMore && allTasks.length > itemsPerPage && (
-            <div className="mt-6 text-center text-sm text-gray-400">
-              Mostrando todas las {allTasks.length} {allTasks.length === 1 ? 'misión' : 'misiones'} 📋✨
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-6 md:mt-8 flex flex-col items-center gap-4">
+              <div className="flex items-center gap-2">
+                {/* Previous button */}
+                <button
+                  onClick={goToPrevPage}
+                  disabled={currentPage === 1}
+                  className="px-3 md:px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+                >
+                  <ICONS.ChevronLeft size={16} />
+                </button>
+
+                {/* Page numbers */}
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum: number;
+                    
+                    if (totalPages <= 5) {
+                      // Show all pages if 5 or less
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      // Show first 5 pages
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      // Show last 5 pages
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      // Show pages around current
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => goToPage(pageNum)}
+                        className={`px-3 md:px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                          currentPage === pageNum
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Next button */}
+                <button
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                  className="px-3 md:px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+                >
+                  <ICONS.ChevronRight size={16} />
+                </button>
+              </div>
+
+              {/* Page info */}
+              <div className="text-xs md:text-sm text-gray-500">
+                Mostrando {startIndex + 1}-{Math.min(endIndex, allTasks.length)} de {allTasks.length} {allTasks.length === 1 ? 'misión' : 'misiones'}
+              </div>
             </div>
           )}
         </>
@@ -437,6 +565,18 @@ const TaskView: React.FC = memo(() => {
         confirmText="✓ Completar"
         cancelText="No, cancelar"
         variant="success"
+      />
+
+      {/* Confirm Dialog for deleting tasks */}
+      <ConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, entryId: '', taskIndex: -1, taskDescription: '' })}
+        onConfirm={handleConfirmDelete}
+        title="¿Eliminar misión?"
+        message={`¿Estás seguro de eliminar: "${deleteDialog.taskDescription}"? Esta acción no se puede deshacer.`}
+        confirmText="🗑️ Eliminar"
+        cancelText="Cancelar"
+        variant="danger"
       />
     </div>
   );

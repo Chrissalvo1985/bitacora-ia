@@ -49,7 +49,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
       })
       .filter(book => book.entryCount > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 6);
+      .slice(0, 4);
   }, [books, entries]);
   
   // High priority tasks - memoized

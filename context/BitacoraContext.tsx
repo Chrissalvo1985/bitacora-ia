@@ -23,6 +23,7 @@ interface MultiTopicResult {
     entities: { name: string; type: string }[];
     isNewBook: boolean;
     entryId: string;
+    originalText: string;
     taskActions: Array<{
       action: 'complete' | 'update';
       taskDescription: string;
@@ -39,7 +40,7 @@ interface BitacoraContextType {
   entries: Entry[];
   isLoading: boolean;
   isInitializing: boolean;
-  addEntry: (text: string, attachment?: Attachment, skipSummaryModal?: boolean) => Promise<{ 
+  addEntry: (text: string, attachment?: Attachment, skipSummaryModal?: boolean, targetBookId?: string) => Promise<{ 
     shouldShowModal?: boolean; 
     insights?: DocumentInsight[];
     multiTopicResult?: MultiTopicResult;
@@ -69,6 +70,7 @@ interface BitacoraContextType {
   refreshData: () => Promise<void>;
   updateTaskStatus: (entryId: string, taskIndex: number, isDone: boolean) => Promise<void>;
   updateTaskFields: (entryId: string, taskIndex: number, updates: { assignee?: string; dueDate?: string; priority?: string; description?: string }) => Promise<void>;
+  deleteTask: (entryId: string, taskIndex: number) => Promise<void>;
   updateEntrySummary: (entryId: string, newSummary: string) => Promise<void>;
   confirmEntryWithEdits: (tempEntryId: string, editedAnalysis: {
     bookName: string;
@@ -79,6 +81,22 @@ interface BitacoraContextType {
     entities: { name: string; type: string }[];
     isNewBook: boolean;
   }) => Promise<void>;
+  confirmMultiTopicEntries: (pendingTopics: Array<{
+    bookName: string;
+    bookId: string;
+    type: NoteType;
+    summary: string;
+    tasks: TaskItem[];
+    entities: { name: string; type: string }[];
+    isNewBook: boolean;
+    entryId: string;
+    originalText: string;
+    taskActions: Array<{
+      action: 'complete' | 'update';
+      taskDescription: string;
+      completionNotes?: string;
+    }>;
+  }>) => Promise<void>;
 }
 
 const BitacoraContext = createContext<BitacoraContextType | undefined>(undefined);
@@ -158,7 +176,8 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
   const addEntry = async (
     text: string, 
     attachment?: Attachment,
-    skipSummaryModal?: boolean
+    skipSummaryModal?: boolean,
+    targetBookId?: string
   ): Promise<{ 
     shouldShowModal?: boolean; 
     insights?: DocumentInsight[];
@@ -197,8 +216,55 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
         taskIndex: idx 
       })));
 
+      // If targetBookId is provided, use single-entry analysis (no multi-topic)
+      if (targetBookId) {
+        const targetBook = books.find(b => b.id === targetBookId);
+        if (!targetBook) {
+          throw new Error('Libreta no encontrada');
+        }
+
+        console.log('📚 Analyzing for specific book:', targetBook.name);
+        const analysis = await analyzeEntry(text, books, attachment);
+        
+        const entryId = generateId();
+        const processedTopic: MultiTopicResult['topics'][0] = {
+          bookName: targetBook.name,
+          bookId: targetBookId,
+          type: analysis.type as NoteType,
+          summary: analysis.summary,
+          tasks: analysis.tasks.map(t => ({
+            description: t.description,
+            assignee: t.assignee,
+            dueDate: t.dueDate,
+            priority: (t.priority as any) || 'MEDIUM',
+            isDone: false
+          })),
+          entities: analysis.entities.map(e => ({
+            name: e.name,
+            type: e.type as any
+          })),
+          isNewBook: false,
+          entryId,
+          originalText: text,
+          taskActions: []
+        };
+
+        const multiTopicResult: MultiTopicResult = {
+          isMultiTopic: false,
+          topics: [processedTopic],
+          overallContext: analysis.summary,
+          completedTasks: 0
+        };
+
+        setIsLoading(false);
+        return {
+          shouldShowModal: true,
+          multiTopicResult
+        };
+      }
+
       // ============================================
-      // USE MULTI-TOPIC ANALYSIS
+      // USE MULTI-TOPIC ANALYSIS (default flow)
       // ============================================
       console.log('🔍 Analyzing with multi-topic detection...');
       const multiTopicAnalysis = await analyzeMultiTopicEntry(
@@ -332,76 +398,30 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
           entities: topic.entities,
           isNewBook,
           entryId,
+          originalText: topic.content,
           taskActions: topic.taskActions || []
         });
       }
 
-      // Save new books to DB
-      for (const book of newBooks) {
-        try {
-          await dataService.createBook(book.id, user.id, book.name, undefined, book.context);
-        } catch (error) {
-          console.error('Error creating book in DB:', error);
-        }
-      }
+      // DON'T save anything yet - just return the pending data for user confirmation
+      // The actual saving happens in confirmMultiTopicEntries when user confirms
 
-      // Update books state
-      if (newBooks.length > 0) {
-        setBooks(prev => [...prev, ...newBooks]);
-      }
-
-      // Save all entries to DB and update state
-      for (const entry of newEntries) {
-        try {
-          const analysis = {
-            targetBookName: processedTopics.find(t => t.entryId === entry.id)?.bookName || '',
-            type: entry.type,
-            summary: entry.summary,
-            tasks: entry.tasks,
-            entities: entry.entities,
-            suggestedPriority: multiTopicAnalysis.suggestedPriority
-          };
-          await dataService.saveEntry(entry, user.id, analysis);
-        } catch (error) {
-          console.error('Error saving entry to DB:', error);
-        }
-      }
-
-      // Update entries state
-      setEntries(prev => [...newEntries, ...prev]);
-
-      // Refresh to get proper task IDs
-      await refreshData();
-
-      // Update book contexts in background
-      for (const topic of processedTopics) {
-        const book = [...books, ...newBooks].find(b => b.id === topic.bookId);
-        if (book) {
-          updateBookContext(book.name, book.context, topic.summary).then(newContext => {
-            setBooks(prevBooks => prevBooks.map(b => 
-              b.id === topic.bookId ? { ...b, context: newContext } : b
-            ));
-          });
-        }
-      }
-
-      // Build result
+      // Build result with pending data (including originalText for each topic)
       const multiTopicResult: MultiTopicResult = {
         isMultiTopic: multiTopicAnalysis.isMultiTopic,
         topics: processedTopics,
         overallContext: multiTopicAnalysis.overallContext,
-        completedTasks: completedTasksCount
+        completedTasks: 0 // Will be counted when confirmed
       };
 
-      console.log('✅ Multi-topic processing complete:', {
-        entriesCreated: newEntries.length,
-        booksCreated: newBooks.length,
-        tasksCompleted: completedTasksCount
+      console.log('📋 Multi-topic analysis ready for confirmation:', {
+        topicsCount: processedTopics.length,
+        pendingBooks: newBooks.length
       });
 
       setIsLoading(false);
       
-      // Always return the multi-topic result so the UI can show what happened
+      // Return pending data - nothing saved yet, user must confirm
       return {
         shouldShowModal: true,
         multiTopicResult
@@ -495,6 +515,153 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
+  const confirmMultiTopicEntries = async (pendingTopics: Array<{
+    bookName: string;
+    bookId: string;
+    type: NoteType;
+    summary: string;
+    tasks: TaskItem[];
+    entities: { name: string; type: string }[];
+    isNewBook: boolean;
+    entryId: string;
+    originalText: string;
+    taskActions: Array<{
+      action: 'complete' | 'update';
+      taskDescription: string;
+      completionNotes?: string;
+    }>;
+  }>): Promise<void> => {
+    if (!user?.id) return;
+
+    try {
+      setIsLoading(true);
+
+      // Get all existing tasks for completing taskActions
+      const allExistingTasks = entries.flatMap(e => e.tasks.map((t, idx) => ({ 
+        ...t, 
+        entryId: e.id, 
+        taskIndex: idx 
+      })));
+
+      const newBooks: Book[] = [];
+      const newEntries: Entry[] = [];
+      let completedTasksCount = 0;
+
+      for (const topic of pendingTopics) {
+        // Create new book if needed
+        if (topic.isNewBook) {
+          const newBook: Book = {
+            id: topic.bookId,
+            name: topic.bookName,
+            createdAt: Date.now(),
+            context: `Tema detectado automáticamente.`
+          };
+          newBooks.push(newBook);
+          
+          try {
+            await dataService.createBook(newBook.id, user.id, newBook.name, undefined, newBook.context);
+          } catch (error) {
+            console.error('Error creating book:', error);
+          }
+        }
+
+        // Create entry
+        const entry: Entry = {
+          id: topic.entryId,
+          originalText: topic.originalText,
+          createdAt: Date.now(),
+          bookId: topic.bookId,
+          type: topic.type,
+          summary: topic.summary,
+          tasks: topic.tasks.map(t => ({
+            description: t.description,
+            assignee: t.assignee,
+            dueDate: t.dueDate,
+            priority: t.priority || 'MEDIUM',
+            isDone: false
+          })),
+          entities: topic.entities.map(e => ({
+            name: e.name,
+            type: e.type as any
+          })),
+          status: EntryStatus.COMPLETED
+        };
+
+        newEntries.push(entry);
+
+        // Save entry to DB
+        try {
+          const analysis = {
+            targetBookName: topic.bookName,
+            type: topic.type,
+            summary: topic.summary,
+            tasks: topic.tasks,
+            entities: topic.entities,
+            suggestedPriority: 'MEDIUM' as any
+          };
+          await dataService.saveEntry(entry, user.id, analysis);
+        } catch (error) {
+          console.error('Error saving entry:', error);
+        }
+
+        // Process task actions (complete existing tasks)
+        for (const action of topic.taskActions || []) {
+          if (action.action === 'complete') {
+            const matchingTask = allExistingTasks.find(t => 
+              t.description.toLowerCase().includes(action.taskDescription.toLowerCase()) ||
+              action.taskDescription.toLowerCase().includes(t.description.toLowerCase())
+            );
+            
+            if (matchingTask && !matchingTask.isDone) {
+              console.log(`✅ Completing task: "${matchingTask.description}"`);
+              
+              if (matchingTask.id) {
+                await dataService.updateTaskStatus(
+                  matchingTask.id,
+                  true,
+                  action.completionNotes
+                );
+              }
+              completedTasksCount++;
+            }
+          }
+        }
+      }
+
+      // Update state
+      if (newBooks.length > 0) {
+        setBooks(prev => [...prev, ...newBooks]);
+      }
+      setEntries(prev => [...newEntries, ...prev]);
+
+      // Refresh to get proper task IDs
+      await refreshData();
+
+      // Update book contexts in background
+      for (const topic of pendingTopics) {
+        const book = [...books, ...newBooks].find(b => b.id === topic.bookId);
+        if (book) {
+          updateBookContext(book.name, book.context, topic.summary).then(newContext => {
+            setBooks(prevBooks => prevBooks.map(b => 
+              b.id === topic.bookId ? { ...b, context: newContext } : b
+            ));
+          });
+        }
+      }
+
+      console.log('✅ Multi-topic entries saved:', {
+        entriesCreated: newEntries.length,
+        booksCreated: newBooks.length,
+        tasksCompleted: completedTasksCount
+      });
+
+    } catch (error) {
+      console.error('Error confirming multi-topic entries:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const updateTaskStatus = async (entryId: string, taskIndex: number, isDone: boolean): Promise<void> => {
     const entry = entries.find(e => e.id === entryId);
     if (!entry || !entry.tasks[taskIndex]) return;
@@ -537,6 +704,32 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
         await dataService.updateTaskFields(newTasks[taskIndex].id!, updates);
       } catch (error) {
         console.error('Error updating task fields in DB:', error);
+        // Revert optimistic update
+        setEntries(prev => prev.map(e => 
+          e.id === entryId ? { ...e, tasks: entry.tasks } : e
+        ));
+      }
+    }
+  };
+
+  const deleteTask = async (entryId: string, taskIndex: number): Promise<void> => {
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry || !entry.tasks[taskIndex]) return;
+
+    const taskToDelete = entry.tasks[taskIndex];
+    const newTasks = entry.tasks.filter((_, idx) => idx !== taskIndex);
+
+    // Optimistic update
+    setEntries(prev => prev.map(e => 
+      e.id === entryId ? { ...e, tasks: newTasks } : e
+    ));
+
+    // Delete from DB
+    if (taskToDelete.id) {
+      try {
+        await dataService.deleteTaskFromDb(taskToDelete.id);
+      } catch (error) {
+        console.error('Error deleting task from DB:', error);
         // Revert optimistic update
         setEntries(prev => prev.map(e => 
           e.id === entryId ? { ...e, tasks: entry.tasks } : e
@@ -806,8 +999,10 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
       refreshData,
       updateTaskStatus,
       updateTaskFields,
+      deleteTask,
       updateEntrySummary,
       confirmEntryWithEdits,
+      confirmMultiTopicEntries,
     }}>
       {children}
     </BitacoraContext.Provider>

@@ -1,7 +1,9 @@
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ICONS, TYPE_STYLES, TYPE_LABELS, TYPE_ICONS } from '../constants';
-import { NoteType, TaskItem } from '../types';
+import { NoteType, TaskItem, Book } from '../types';
+import { useBitacora } from '../context/BitacoraContext';
 
 interface TopicSummary {
   bookName: string;
@@ -12,6 +14,7 @@ interface TopicSummary {
   entities: { name: string; type: string }[];
   isNewBook: boolean;
   entryId: string;
+  originalText: string;
   taskActions: Array<{
     action: 'complete' | 'update';
     taskDescription: string;
@@ -22,26 +25,104 @@ interface TopicSummary {
 interface MultiTopicSummaryModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onConfirm: (editedTopics: TopicSummary[]) => void;
   isMultiTopic: boolean;
   topics: TopicSummary[];
   overallContext: string;
   completedTasks: number;
+  fixedBookId?: string; // When provided, book selection is disabled
 }
 
 const MultiTopicSummaryModal: React.FC<MultiTopicSummaryModalProps> = memo(({
   isOpen,
   onClose,
+  onConfirm,
   isMultiTopic,
-  topics,
+  topics: initialTopics,
   overallContext,
-  completedTasks
+  completedTasks,
+  fixedBookId
 }) => {
+  const { books } = useBitacora();
+  const [editedTopics, setEditedTopics] = useState<TopicSummary[]>(initialTopics);
+  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
+  const [editingBook, setEditingBook] = useState<string | null>(null);
+
+  // Reset state when topics change
+  useEffect(() => {
+    setEditedTopics(initialTopics);
+    // Auto-expand first topic if only one
+    if (initialTopics.length === 1) {
+      setExpandedTopics(new Set([initialTopics[0].entryId]));
+    }
+  }, [initialTopics]);
+
   if (!isOpen) return null;
 
-  const newBooksCount = topics.filter(t => t.isNewBook).length;
-  const totalTasks = topics.reduce((acc, t) => acc + t.tasks.length, 0);
+  const newBooksCount = editedTopics.filter(t => t.isNewBook).length;
+  const totalTasks = editedTopics.reduce((acc, t) => acc + t.tasks.length, 0);
 
-  return (
+  const toggleExpand = (entryId: string) => {
+    setExpandedTopics(prev => {
+      const next = new Set(prev);
+      if (next.has(entryId)) {
+        next.delete(entryId);
+      } else {
+        next.add(entryId);
+      }
+      return next;
+    });
+  };
+
+  const handleTaskChange = (topicIdx: number, taskIdx: number, field: keyof TaskItem, value: any) => {
+    setEditedTopics(prev => {
+      const updated = [...prev];
+      const topic = { ...updated[topicIdx] };
+      const tasks = [...topic.tasks];
+      tasks[taskIdx] = { ...tasks[taskIdx], [field]: value };
+      topic.tasks = tasks;
+      updated[topicIdx] = topic;
+      return updated;
+    });
+  };
+
+  const handleRemoveTask = (topicIdx: number, taskIdx: number) => {
+    setEditedTopics(prev => {
+      const updated = [...prev];
+      const topic = { ...updated[topicIdx] };
+      topic.tasks = topic.tasks.filter((_, idx) => idx !== taskIdx);
+      updated[topicIdx] = topic;
+      return updated;
+    });
+  };
+
+  const handleRemoveTopic = (topicIdx: number) => {
+    setEditedTopics(prev => prev.filter((_, idx) => idx !== topicIdx));
+  };
+
+  const handleSelectBook = (topicIdx: number, book: Book) => {
+    setEditedTopics(prev => {
+      const updated = [...prev];
+      updated[topicIdx] = {
+        ...updated[topicIdx],
+        bookId: book.id,
+        bookName: book.name,
+        isNewBook: false
+      };
+      return updated;
+    });
+    setEditingBook(null);
+  };
+
+  const handleConfirm = () => {
+    if (editedTopics.length === 0) {
+      onClose();
+      return;
+    }
+    onConfirm(editedTopics);
+  };
+
+  const modalContent = (
     <AnimatePresence>
       {isOpen && (
         <>
@@ -54,214 +135,360 @@ const MultiTopicSummaryModal: React.FC<MultiTopicSummaryModalProps> = memo(({
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
           />
 
-          {/* Modal - Bottom sheet on mobile, centered on desktop */}
-          <motion.div
-            initial={{ opacity: 0, y: '100%' }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-white rounded-t-3xl md:rounded-3xl shadow-2xl z-[100] overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh]"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-          >
-            {/* Handle bar - mobile only */}
-            <div className="md:hidden flex justify-center py-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500">
-              <div className="w-10 h-1 bg-white/40 rounded-full" />
-            </div>
-
-            {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 p-4 md:p-6 text-white relative overflow-hidden">
-              <div className="absolute inset-0 bg-white/10 backdrop-blur-3xl" />
-              <div className="relative">
-                <div className="flex items-center justify-between mb-2 md:mb-3">
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <div className="bg-white/20 p-2 md:p-2.5 rounded-xl">
-                      {isMultiTopic ? (
-                        <ICONS.Grid3x3 size={20} className="md:w-6 md:h-6" />
-                      ) : (
-                        <ICONS.CheckCircle2 size={20} className="md:w-6 md:h-6" />
-                      )}
-                    </div>
-                    <div>
-                      <h2 className="text-base md:text-xl font-bold">
-                        {isMultiTopic ? '¡Múltiples temas detectados!' : '✅ Entrada procesada'}
-                      </h2>
-                      <p className="text-xs md:text-sm text-white/80">
-                        {isMultiTopic 
-                          ? `Distribuido en ${topics.length} libretas` 
-                          : `Guardado en ${topics[0]?.bookName || 'tu libreta'}`
-                        }
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={onClose}
-                    className="p-1.5 md:p-2 hover:bg-white/20 rounded-xl transition-colors"
-                  >
-                    <ICONS.X size={20} className="md:w-6 md:h-6" />
-                  </button>
-                </div>
-
-                {/* Stats */}
-                <div className="flex flex-wrap gap-2 mt-3 md:mt-4">
-                  <div className="bg-white/20 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-medium flex items-center gap-1.5">
-                    <ICONS.Book size={12} className="md:w-3.5 md:h-3.5" />
-                    {topics.length} {topics.length === 1 ? 'libreta' : 'libretas'}
-                  </div>
-                  {newBooksCount > 0 && (
-                    <div className="bg-emerald-400/30 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-medium flex items-center gap-1.5">
-                      <ICONS.Plus size={12} className="md:w-3.5 md:h-3.5" />
-                      {newBooksCount} nueva{newBooksCount > 1 ? 's' : ''}
-                    </div>
-                  )}
-                  {totalTasks > 0 && (
-                    <div className="bg-amber-400/30 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-medium flex items-center gap-1.5">
-                      <ICONS.ListTodo size={12} className="md:w-3.5 md:h-3.5" />
-                      {totalTasks} tarea{totalTasks > 1 ? 's' : ''}
-                    </div>
-                  )}
-                  {completedTasks > 0 && (
-                    <div className="bg-green-400/30 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-medium flex items-center gap-1.5">
-                      <ICONS.CheckCircle size={12} className="md:w-3.5 md:h-3.5" />
-                      {completedTasks} completada{completedTasks > 1 ? 's' : ''}
-                    </div>
-                  )}
-                </div>
+          {/* Modal Container */}
+          <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center pointer-events-none p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 100, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 100, scale: 0.95 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="w-full md:w-full md:max-w-2xl bg-white rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh] pointer-events-auto"
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Handle bar - mobile only */}
+              <div className="md:hidden flex justify-center py-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500">
+                <div className="w-10 h-1 bg-white/40 rounded-full" />
               </div>
-            </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
-              {/* Overall context */}
-              {overallContext && (
-                <div className="bg-gray-50 rounded-xl p-3 md:p-4 border border-gray-100">
-                  <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 md:mb-2">
-                    Contexto general
-                  </p>
-                  <p className="text-xs md:text-sm text-gray-700 leading-relaxed">
-                    {overallContext}
-                  </p>
-                </div>
-              )}
-
-              {/* Topics */}
-              <div className="space-y-2 md:space-y-3">
-                <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide px-1">
-                  Distribución por libreta
-                </p>
-                
-                {topics.map((topic, idx) => (
-                  <motion.div
-                    key={topic.entryId}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="bg-white rounded-xl md:rounded-2xl border border-gray-200 overflow-hidden"
-                  >
-                    {/* Topic Header */}
-                    <div className="p-3 md:p-4 border-b border-gray-100">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
-                          <div className={`p-1.5 md:p-2 rounded-lg md:rounded-xl flex-shrink-0 ${topic.isNewBook ? 'bg-emerald-100' : 'bg-indigo-100'}`}>
-                            <ICONS.Book size={16} className={`md:w-[18px] md:h-[18px] ${topic.isNewBook ? 'text-emerald-600' : 'text-indigo-600'}`} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <h3 className="font-bold text-sm md:text-base text-gray-900 truncate">{topic.bookName}</h3>
-                              {topic.isNewBook && (
-                                <span className="text-[9px] md:text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full border border-emerald-200 flex-shrink-0">
-                                  NUEVA
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-lg text-[10px] md:text-xs font-bold border flex items-center gap-1 flex-shrink-0 ${TYPE_STYLES[topic.type]}`}>
-                          {TYPE_ICONS[topic.type]}
-                          <span className="hidden sm:inline">{TYPE_LABELS[topic.type]}</span>
-                        </span>
+              {/* Header */}
+              <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 p-4 md:p-6 text-white relative overflow-hidden">
+                <div className="absolute inset-0 bg-white/10 backdrop-blur-3xl" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-2 md:mb-3">
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <div className="bg-white/20 p-2 md:p-2.5 rounded-xl">
+                        {isMultiTopic ? (
+                          <ICONS.Grid3x3 size={20} className="md:w-6 md:h-6" />
+                        ) : (
+                          <ICONS.Sparkles size={20} className="md:w-6 md:h-6" />
+                        )}
+                      </div>
+                      <div>
+                        <h2 className="text-base md:text-xl font-bold">
+                          {isMultiTopic ? '¡Múltiples temas detectados!' : 'Análisis completado'}
+                        </h2>
+                        <p className="text-xs md:text-sm text-white/80">
+                          Revisa y confirma antes de guardar
+                        </p>
                       </div>
                     </div>
+                    <button
+                      onClick={onClose}
+                      className="p-1.5 md:p-2 hover:bg-white/20 rounded-xl transition-colors"
+                    >
+                      <ICONS.X size={20} className="md:w-6 md:h-6" />
+                    </button>
+                  </div>
 
-                    {/* Topic Content */}
-                    <div className="p-3 md:p-4 space-y-2 md:space-y-3">
-                      <p className="text-xs md:text-sm text-gray-700 leading-relaxed line-clamp-3 md:line-clamp-none">
-                        {topic.summary}
-                      </p>
-
-                      {/* Tasks */}
-                      {topic.tasks.length > 0 && (
-                        <div className="space-y-1.5 md:space-y-2">
-                          <p className="text-[10px] md:text-xs font-semibold text-indigo-600 uppercase tracking-wide">
-                            Tareas creadas:
-                          </p>
-                          {topic.tasks.slice(0, 3).map((task, taskIdx) => (
-                            <div key={taskIdx} className="flex items-start gap-1.5 md:gap-2 text-xs md:text-sm">
-                              <div className="w-3.5 h-3.5 md:w-4 md:h-4 border-2 border-gray-300 rounded mt-0.5 flex-shrink-0" />
-                              <span className="text-gray-700 line-clamp-1">{task.description}</span>
-                              {task.priority === 'HIGH' && (
-                                <span className="text-[9px] md:text-[10px] font-bold text-rose-600 bg-rose-50 px-1 md:px-1.5 py-0.5 rounded flex-shrink-0">
-                                  Alta
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                          {topic.tasks.length > 3 && (
-                            <p className="text-[10px] text-gray-400 pl-5">+{topic.tasks.length - 3} más</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Completed tasks */}
-                      {topic.taskActions.filter(a => a.action === 'complete').length > 0 && (
-                        <div className="space-y-1.5 md:space-y-2">
-                          <p className="text-[10px] md:text-xs font-semibold text-emerald-600 uppercase tracking-wide">
-                            Tareas completadas:
-                          </p>
-                          {topic.taskActions.filter(a => a.action === 'complete').slice(0, 2).map((action, actionIdx) => (
-                            <div key={actionIdx} className="flex items-start gap-1.5 md:gap-2 text-xs md:text-sm">
-                              <ICONS.CheckCircle2 size={14} className="md:w-4 md:h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                              <span className="text-emerald-700 line-through line-clamp-1">{action.taskDescription}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Entities */}
-                      {topic.entities.length > 0 && (
-                        <div className="flex flex-wrap gap-1 pt-1 md:pt-2">
-                          {topic.entities.slice(0, 3).map((entity, entityIdx) => (
-                            <span key={entityIdx} className="text-[10px] md:text-xs font-medium text-slate-500 bg-slate-100 px-1.5 md:px-2 py-0.5 rounded">
-                              #{entity.name}
-                            </span>
-                          ))}
-                          {topic.entities.length > 3 && (
-                            <span className="text-[10px] text-gray-400">+{topic.entities.length - 3}</span>
-                          )}
-                        </div>
-                      )}
+                  {/* Stats */}
+                  <div className="flex flex-wrap gap-2 mt-3 md:mt-4">
+                    <div className="bg-white/20 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-medium flex items-center gap-1.5">
+                      <ICONS.Book size={12} className="md:w-3.5 md:h-3.5" />
+                      {editedTopics.length} {editedTopics.length === 1 ? 'entrada' : 'entradas'}
                     </div>
-                  </motion.div>
-                ))}
+                    {newBooksCount > 0 && (
+                      <div className="bg-emerald-400/30 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-medium flex items-center gap-1.5">
+                        <ICONS.Plus size={12} className="md:w-3.5 md:h-3.5" />
+                        {newBooksCount} libreta{newBooksCount > 1 ? 's' : ''} nueva{newBooksCount > 1 ? 's' : ''}
+                      </div>
+                    )}
+                    {totalTasks > 0 && (
+                      <div className="bg-amber-400/30 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-medium flex items-center gap-1.5">
+                        <ICONS.ListTodo size={12} className="md:w-3.5 md:h-3.5" />
+                        {totalTasks} tarea{totalTasks > 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {/* Footer */}
-            <div className="p-3 md:p-4 border-t border-gray-100 bg-gray-50">
-              <button
-                onClick={onClose}
-                className="w-full py-2.5 md:py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-sm md:text-base hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg active:scale-[0.98]"
-              >
-                ¡Entendido! 🚀
-              </button>
-            </div>
-          </motion.div>
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
+                {/* Overall context */}
+                {overallContext && (
+                  <div className="bg-gray-50 rounded-xl p-3 md:p-4 border border-gray-100">
+                    <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 md:mb-2">
+                      Contexto general
+                    </p>
+                    <p className="text-xs md:text-sm text-gray-700 leading-relaxed">
+                      {overallContext}
+                    </p>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {editedTopics.length === 0 && (
+                  <div className="text-center py-8">
+                    <div className="bg-gray-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <ICONS.X className="text-gray-400" size={24} />
+                    </div>
+                    <p className="text-gray-500 font-medium">No hay entradas para guardar</p>
+                    <p className="text-xs text-gray-400 mt-1">Has eliminado todas las entradas</p>
+                  </div>
+                )}
+
+                {/* Topics */}
+                <div className="space-y-2 md:space-y-3">
+                  {editedTopics.length > 0 && (
+                    <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide px-1">
+                      {isMultiTopic ? 'Distribución por libreta' : 'Entrada detectada'}
+                    </p>
+                  )}
+                  
+                  {editedTopics.map((topic, topicIdx) => {
+                    const isExpanded = expandedTopics.has(topic.entryId);
+                    const isEditingThisBook = editingBook === topic.entryId;
+                    
+                    return (
+                      <motion.div
+                        key={topic.entryId}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: topicIdx * 0.05 }}
+                        className="bg-white rounded-xl md:rounded-2xl border border-gray-200 overflow-hidden"
+                      >
+                        {/* Topic Header */}
+                        <div 
+                          className="p-3 md:p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                          onClick={() => toggleExpand(topic.entryId)}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+                              <div className={`p-1.5 md:p-2 rounded-lg md:rounded-xl flex-shrink-0 ${topic.isNewBook ? 'bg-emerald-100' : 'bg-indigo-100'}`}>
+                                <ICONS.Book size={16} className={`md:w-[18px] md:h-[18px] ${topic.isNewBook ? 'text-emerald-600' : 'text-indigo-600'}`} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h3 className="font-bold text-sm md:text-base text-gray-900 truncate">{topic.bookName}</h3>
+                                  {topic.isNewBook && (
+                                    <span className="text-[9px] md:text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full border border-emerald-200 flex-shrink-0">
+                                      NUEVA
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{topic.summary}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className={`px-2 py-0.5 rounded-lg text-[10px] md:text-xs font-bold border flex items-center gap-1 flex-shrink-0 ${TYPE_STYLES[topic.type]}`}>
+                                {TYPE_ICONS[topic.type]}
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveTopic(topicIdx);
+                                }}
+                                className="p-1.5 hover:bg-rose-50 rounded-lg transition-colors text-gray-300 hover:text-rose-500"
+                                title="Eliminar entrada"
+                              >
+                                <ICONS.Trash2 size={14} />
+                              </button>
+                              <motion.div
+                                animate={{ rotate: isExpanded ? 90 : 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="text-gray-400"
+                              >
+                                <ICONS.ChevronRight size={16} />
+                              </motion.div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expanded Content */}
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-3 md:p-4 space-y-3 md:space-y-4 bg-gray-50/50">
+                                {/* Book selector - hidden when fixedBookId is provided */}
+                                {!fixedBookId && (
+                                  <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-xs font-semibold text-gray-700">Libreta destino</span>
+                                      <button
+                                        onClick={() => setEditingBook(isEditingThisBook ? null : topic.entryId)}
+                                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                                      >
+                                        <ICONS.Edit size={12} />
+                                        Cambiar
+                                      </button>
+                                    </div>
+                                    
+                                    {isEditingThisBook ? (
+                                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                                        {books.map((book) => (
+                                          <button
+                                            key={book.id}
+                                            onClick={() => handleSelectBook(topicIdx, book)}
+                                            className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors flex items-center gap-2 ${
+                                              topic.bookId === book.id
+                                                ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                                : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                                            }`}
+                                          >
+                                            <ICONS.Book size={12} />
+                                            {book.name}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-2">
+                                        <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                                          topic.isNewBook 
+                                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' 
+                                            : 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                        }`}>
+                                          {topic.isNewBook ? '✨ Nueva' : '📚 Existente'}
+                                        </span>
+                                        <span className="text-sm font-medium text-gray-800">{topic.bookName}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {/* Fixed book display when inside a book */}
+                                {fixedBookId && (
+                                  <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-200">
+                                    <div className="flex items-center gap-2">
+                                      <ICONS.Book size={16} className="text-indigo-600" />
+                                      <div>
+                                        <span className="text-xs font-semibold text-indigo-600">Guardando en:</span>
+                                        <span className="text-sm font-bold text-indigo-800 ml-2">{topic.bookName}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Summary */}
+                                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                  <p className="text-xs font-semibold text-gray-700 mb-1.5">Resumen</p>
+                                  <p className="text-sm text-gray-600 leading-relaxed">{topic.summary}</p>
+                                </div>
+
+                                {/* Tasks */}
+                                {topic.tasks.length > 0 && (
+                                  <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                    <p className="text-xs font-semibold text-indigo-600 mb-2">
+                                      Tareas ({topic.tasks.length})
+                                    </p>
+                                    <div className="space-y-2">
+                                      {topic.tasks.map((task, taskIdx) => (
+                                        <div key={taskIdx} className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                                          <div className="flex items-start gap-2">
+                                            <div className="flex-1">
+                                              <input
+                                                type="text"
+                                                value={task.description}
+                                                onChange={(e) => handleTaskChange(topicIdx, taskIdx, 'description', e.target.value)}
+                                                className="w-full px-2 py-1 rounded border border-gray-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none text-xs"
+                                              />
+                                              <div className="grid grid-cols-3 gap-2 mt-2">
+                                                <input
+                                                  type="text"
+                                                  value={task.assignee || ''}
+                                                  onChange={(e) => handleTaskChange(topicIdx, taskIdx, 'assignee', e.target.value || undefined)}
+                                                  placeholder="@Responsable"
+                                                  className="px-2 py-1 rounded border border-gray-200 focus:border-indigo-500 outline-none text-xs"
+                                                />
+                                                <input
+                                                  type="date"
+                                                  value={task.dueDate ? (task.dueDate instanceof Date ? task.dueDate.toISOString().split('T')[0] : task.dueDate) : ''}
+                                                  onChange={(e) => handleTaskChange(topicIdx, taskIdx, 'dueDate', e.target.value || undefined)}
+                                                  className="px-2 py-1 rounded border border-gray-200 focus:border-indigo-500 outline-none text-xs"
+                                                />
+                                                <select
+                                                  value={task.priority || 'MEDIUM'}
+                                                  onChange={(e) => handleTaskChange(topicIdx, taskIdx, 'priority', e.target.value)}
+                                                  className="px-2 py-1 rounded border border-gray-200 focus:border-indigo-500 outline-none text-xs"
+                                                >
+                                                  <option value="LOW">Baja</option>
+                                                  <option value="MEDIUM">Media</option>
+                                                  <option value="HIGH">Alta</option>
+                                                </select>
+                                              </div>
+                                            </div>
+                                            <button
+                                              onClick={() => handleRemoveTask(topicIdx, taskIdx)}
+                                              className="p-1 hover:bg-rose-100 rounded text-gray-400 hover:text-rose-500 transition-colors"
+                                            >
+                                              <ICONS.X size={14} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Task Actions (completing existing tasks) */}
+                                {topic.taskActions.filter(a => a.action === 'complete').length > 0 && (
+                                  <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                                    <p className="text-xs font-semibold text-emerald-700 mb-2">
+                                      ✅ Tareas que se completarán
+                                    </p>
+                                    {topic.taskActions.filter(a => a.action === 'complete').map((action, idx) => (
+                                      <div key={idx} className="flex items-center gap-2 text-xs text-emerald-700">
+                                        <ICONS.CheckCircle2 size={12} />
+                                        <span className="line-through">{action.taskDescription}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Entities */}
+                                {topic.entities.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {topic.entities.map((entity, idx) => (
+                                      <span key={idx} className="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                        #{entity.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-3 md:p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-3">
+                <button
+                  onClick={onClose}
+                  className="px-4 md:px-5 py-2 md:py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={editedTopics.length === 0}
+                  className="px-4 md:px-6 py-2 md:py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+                >
+                  {editedTopics.length === 0 ? 'Sin entradas' : `Guardar ${editedTopics.length} entrada${editedTopics.length > 1 ? 's' : ''} ✨`}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>
   );
+
+  // Render modal in portal to avoid stacking context issues
+  if (typeof window === 'undefined') return null;
+  return createPortal(modalContent, document.body);
 });
 
 MultiTopicSummaryModal.displayName = 'MultiTopicSummaryModal';
 
 export default MultiTopicSummaryModal;
-

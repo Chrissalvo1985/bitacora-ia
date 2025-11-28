@@ -2,10 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
 import { Attachment, NoteType, TaskItem } from '../types';
-import DocumentInsightsModal from './DocumentInsightsModal';
-import AnalysisSummaryModal from './AnalysisSummaryModal';
 import MultiTopicSummaryModal from './MultiTopicSummaryModal';
-import { DocumentInsight } from '../services/documentAnalysisService';
 import { motion, AnimatePresence } from 'framer-motion';
 import { extractTextFromPDF } from '../services/pdfService';
 
@@ -21,6 +18,7 @@ interface MultiTopicModalData {
     entities: { name: string; type: string }[];
     isNewBook: boolean;
     entryId: string;
+    originalText: string;
     taskActions: Array<{
       action: 'complete' | 'update';
       taskDescription: string;
@@ -104,24 +102,22 @@ const AnalysisProgressBar: React.FC<{ step: AnalysisStep; hasAttachment: boolean
   );
 };
 
-const CaptureInput: React.FC = () => {
+interface CaptureInputProps {
+  bookId?: string; // When provided, entries go directly to this book without modal
+}
+
+const CaptureInput: React.FC<CaptureInputProps> = ({ bookId }) => {
   const [text, setText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isPenMode, setIsPenMode] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [analysisStep, setAnalysisStep] = useState<AnalysisStep>('idle');
-  const { addEntry, isLoading, updateTaskStatus, refreshData, confirmEntryWithEdits, entries, deleteEntry } = useBitacora();
+  const { addEntry, isLoading, confirmMultiTopicEntries } = useBitacora();
   const [attachment, setAttachment] = useState<Attachment | undefined>(undefined);
   const [fileError, setFileError] = useState<string | null>(null);
-  const [showInsightsModal, setShowInsightsModal] = useState(false);
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showMultiTopicModal, setShowMultiTopicModal] = useState(false);
   const [multiTopicData, setMultiTopicData] = useState<MultiTopicModalData | null>(null);
-  const [documentInsights, setDocumentInsights] = useState<DocumentInsight[]>([]);
-  const [currentFileName, setCurrentFileName] = useState('');
-  const [analysisSummary, setAnalysisSummary] = useState<any>(null);
-  const [tempEntryId, setTempEntryId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -285,7 +281,7 @@ const CaptureInput: React.FC = () => {
   };
 
   // Simulate progress steps during analysis
-  const runAnalysisWithProgress = async (contentText: string, contentAttachment?: Attachment) => {
+  const runAnalysisWithProgress = async (contentText: string, contentAttachment?: Attachment, targetBookId?: string) => {
     const hasAttachment = !!contentAttachment;
     
     // Step 1: Reading
@@ -296,7 +292,7 @@ const CaptureInput: React.FC = () => {
     setAnalysisStep('analyzing');
     
     // Start the actual analysis
-    const resultPromise = addEntry(contentText, contentAttachment, false);
+    const resultPromise = addEntry(contentText, contentAttachment, false, targetBookId);
     
     // Step 3: Classifying (after a delay)
     setTimeout(() => setAnalysisStep('classifying'), 1500);
@@ -333,33 +329,13 @@ const CaptureInput: React.FC = () => {
         clearCanvas();
         setIsPenMode(false);
         
-        const result = await runAnalysisWithProgress('', drawingAttachment);
+        const result = await runAnalysisWithProgress('', drawingAttachment, bookId);
         setIsExpanded(false);
         
-        // Handle multi-topic result
+        // Show confirmation modal
         if (result && 'multiTopicResult' in result && result.multiTopicResult) {
           setMultiTopicData(result.multiTopicResult);
           setShowMultiTopicModal(true);
-          return;
-        }
-        
-        if (result && 'analysisSummary' in result && result.analysisSummary) {
-          const summary = result.analysisSummary as any;
-          if (summary.tempEntryId) {
-            setTempEntryId(summary.tempEntryId);
-            const { tempEntryId, ...summaryForModal } = summary;
-            const enrichedSummary = {
-              ...summaryForModal,
-              documentInsights: result.insights || [],
-            };
-            setAnalysisSummary(enrichedSummary);
-            setShowSummaryModal(true);
-          }
-        }
-        
-        if (result && 'shouldShowModal' in result && result.shouldShowModal && result.insights) {
-          setDocumentInsights(result.insights);
-          setCurrentFileName('dibujo.png');
         }
         return;
       }
@@ -369,7 +345,6 @@ const CaptureInput: React.FC = () => {
     
     const contentText = text;
     const contentAttachment = attachment;
-    const fileName = attachment?.fileName || '';
     
     // Reset input but keep expanded for progress
     setText('');
@@ -378,83 +353,14 @@ const CaptureInput: React.FC = () => {
     setIsPenMode(false);
     clearCanvas();
     
-    const result = await runAnalysisWithProgress(contentText, contentAttachment);
+    const result = await runAnalysisWithProgress(contentText, contentAttachment, bookId);
     setIsExpanded(false);
     
-    // Handle multi-topic result (new flow)
+    // Show confirmation modal
     if (result && 'multiTopicResult' in result && result.multiTopicResult) {
       setMultiTopicData(result.multiTopicResult);
       setShowMultiTopicModal(true);
-      return;
     }
-    
-    // Legacy: If there's an analysis summary, show summary modal first
-    if (result && 'analysisSummary' in result && result.analysisSummary) {
-      const summary = result.analysisSummary as any;
-      if (summary.tempEntryId) {
-        setTempEntryId(summary.tempEntryId);
-        // Remove tempEntryId from summary before passing to modal
-        const { tempEntryId, ...summaryForModal } = summary;
-        
-        // Include document insights in the summary modal (attachment only used for AI context)
-        const enrichedSummary = {
-          ...summaryForModal,
-          documentInsights: result.insights || [],
-        };
-        
-        setAnalysisSummary(enrichedSummary);
-        setShowSummaryModal(true);
-        
-        // Store insights for reference but don't show separate modal
-        if (result.insights) {
-          setDocumentInsights(result.insights);
-          setCurrentFileName(fileName);
-        }
-      }
-    }
-  };
-
-  const handleConfirmSummary = async (editedData: any) => {
-    if (tempEntryId) {
-      await confirmEntryWithEdits(tempEntryId, editedData);
-      setShowSummaryModal(false);
-      setTempEntryId(null);
-      setAnalysisSummary(null);
-      // Clear document insights - they were already shown in the summary modal
-      setDocumentInsights([]);
-      setCurrentFileName('');
-    }
-  };
-
-  const handleCancelSummary = () => {
-    // Delete the temp entry if user cancels
-    if (tempEntryId) {
-      deleteEntry(tempEntryId);
-    }
-    setShowSummaryModal(false);
-    setTempEntryId(null);
-    setAnalysisSummary(null);
-  };
-
-  const handleInsightAction = async (insight: DocumentInsight) => {
-    if (insight.action) {
-      switch (insight.action.type) {
-        case 'create_task':
-          // Task will be created automatically by the entry
-          break;
-        case 'update_task':
-          if (insight.action.data?.entryId && insight.action.data?.taskIndex !== undefined) {
-            await updateTaskStatus(insight.action.data.entryId, insight.action.data.taskIndex, true);
-            await refreshData();
-          }
-          break;
-        case 'update_entry':
-          // Entry update logic
-          break;
-      }
-    }
-    // Remove this insight from the list
-    setDocumentInsights(prev => prev.filter(i => i !== insight));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -820,20 +726,18 @@ const CaptureInput: React.FC = () => {
         </div>
       </div>
 
-      {analysisSummary && (
-        <AnalysisSummaryModal
-          isOpen={showSummaryModal}
-          onClose={handleCancelSummary}
-          onConfirm={handleConfirmSummary}
-          analysis={analysisSummary}
-        />
-      )}
-
-      {/* Multi-Topic Summary Modal */}
+      {/* Confirmation Modal */}
       {showMultiTopicModal && multiTopicData && (
         <MultiTopicSummaryModal
           isOpen={showMultiTopicModal}
           onClose={() => {
+            // User cancelled - don't save anything
+            setShowMultiTopicModal(false);
+            setMultiTopicData(null);
+          }}
+          onConfirm={async (editedTopics) => {
+            // User confirmed - save the entries
+            await confirmMultiTopicEntries(editedTopics);
             setShowMultiTopicModal(false);
             setMultiTopicData(null);
           }}
@@ -841,19 +745,9 @@ const CaptureInput: React.FC = () => {
           topics={multiTopicData.topics}
           overallContext={multiTopicData.overallContext}
           completedTasks={multiTopicData.completedTasks}
+          fixedBookId={bookId}
         />
       )}
-
-      <DocumentInsightsModal
-        isOpen={showInsightsModal}
-        onClose={() => {
-          setShowInsightsModal(false);
-          setDocumentInsights([]);
-        }}
-        insights={documentInsights}
-        onAction={handleInsightAction}
-        fileName={currentFileName}
-      />
     </div>
   );
 };

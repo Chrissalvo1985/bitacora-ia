@@ -231,6 +231,16 @@ export async function updateTaskFields(
   }
 }
 
+// Delete task
+export async function deleteTaskFromDb(taskId: string): Promise<void> {
+  try {
+    await db.deleteTask(taskId);
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    throw error;
+  }
+}
+
 // Delete entry (user-scoped)
 export async function deleteEntryFromDb(entryId: string, userId: string): Promise<void> {
   try {

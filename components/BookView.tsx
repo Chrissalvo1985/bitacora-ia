@@ -188,7 +188,7 @@ const BookView: React.FC<BookViewProps> = memo(({ bookId }) => {
       </div>
 
       <div className="mb-6 md:mb-8 sticky top-0 z-30 pt-1 bg-[#f8fafc]/90 backdrop-blur-sm pb-2">
-        <CaptureInput />
+        <CaptureInput bookId={bookId} />
       </div>
 
       <div className="flex-1">
