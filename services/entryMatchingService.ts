@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { Entry, TaskItem } from '../types';
+import { callOpenAI } from './openaiRateLimiter';
 
 const openai = new OpenAI({
   apiKey: import.meta.env.VITE_OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY,
@@ -88,7 +89,7 @@ Responde en JSON:
 }`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI(() => openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'Eres un asistente que detecta si un texto actualiza contenido existente o es nuevo.' },
@@ -97,7 +98,7 @@ Responde en JSON:
       response_format: { type: 'json_object' },
       temperature: 0.3, // Lower temperature for more consistent matching
       max_tokens: 500,
-    });
+    }));
 
     const content = response.choices[0]?.message?.content;
     if (!content) {

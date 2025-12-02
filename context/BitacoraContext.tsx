@@ -498,6 +498,8 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
           setBooks(prevBooks => prevBooks.map(b => 
             b.id === editedAnalysis.bookId ? { ...b, context: newContext } : b
           ));
+        }).catch(error => {
+          console.error('Error updating book context:', error);
         });
       }
     } catch (error) {
@@ -637,15 +639,21 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
       // Refresh to get proper task IDs
       await refreshData();
 
-      // Update book contexts in background
-      for (const topic of pendingTopics) {
+      // Update book contexts in background (sequentially to avoid rate limits)
+      for (let i = 0; i < pendingTopics.length; i++) {
+        const topic = pendingTopics[i];
         const book = [...books, ...newBooks].find(b => b.id === topic.bookId);
         if (book) {
-          updateBookContext(book.name, book.context, topic.summary).then(newContext => {
-            setBooks(prevBooks => prevBooks.map(b => 
-              b.id === topic.bookId ? { ...b, context: newContext } : b
-            ));
-          });
+          // Add delay between updates to avoid rate limits
+          setTimeout(() => {
+            updateBookContext(book.name, book.context, topic.summary).then(newContext => {
+              setBooks(prevBooks => prevBooks.map(b => 
+                b.id === topic.bookId ? { ...b, context: newContext } : b
+              ));
+            }).catch(error => {
+              console.error('Error updating book context:', error);
+            });
+          }, i * 2000); // 2 seconds delay between each update
         }
       }
 

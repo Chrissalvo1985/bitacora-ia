@@ -15,6 +15,8 @@ const openai = new OpenAI({
   dangerouslyAllowBrowser: true, // For client-side usage (required for this architecture)
 });
 
+import { callOpenAI } from './openaiRateLimiter';
+
 export interface OpenAIResponse {
   targetBookName: string;
   type: NoteType;
@@ -253,13 +255,13 @@ El documento se guardará como referencia, pero la entrada debe reflejar TODO el
       }
     }
 
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI(() => openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages,
       response_format: { type: 'json_object' },
       temperature: 0.5, // Lower temperature for more consistent classification
       max_tokens: 2000,
-    });
+    }));
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
@@ -285,9 +287,22 @@ El documento se guardará como referencia, pero la entrada debe reflejar TODO el
       })),
       suggestedPriority: data.suggestedPriority || 'MEDIUM',
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('OpenAI Analysis Error:', error);
-    // Fallback response
+    
+    // Check if it's a rate limit/quota error
+    const isRateLimit = error?.status === 429 || 
+                       error?.code === 'rate_limit_exceeded' ||
+                       error?.message?.includes('429') ||
+                       error?.message?.toLowerCase().includes('rate limit') ||
+                       error?.message?.toLowerCase().includes('quota') ||
+                       error?.message?.toLowerCase().includes('exceeded');
+    
+    if (isRateLimit) {
+      throw new Error('Se ha excedido el límite de solicitudes a la API de OpenAI. Por favor, espera unos minutos e intenta de nuevo. Si el problema persiste, verifica tu plan y facturación en OpenAI.');
+    }
+    
+    // Fallback response for other errors
     return {
       targetBookName: 'Bandeja de Entrada',
       type: NoteType.NOTE,
@@ -325,7 +340,7 @@ Ejemplo de salida CORRECTA:
 Seguimiento del Proyecto Alpha, enfocado actualmente en la fase de presupuestos y contratación.`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI(() => openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'Eres un asistente que genera descripciones concisas y profesionales.' },
@@ -333,7 +348,7 @@ Seguimiento del Proyecto Alpha, enfocado actualmente en la fase de presupuestos 
       ],
       temperature: 0.7,
       max_tokens: 200,
-    });
+    }));
 
     return response.choices[0]?.message?.content?.trim() || currentContext || '';
   } catch (error) {
@@ -368,7 +383,7 @@ Genera un resumen ejecutivo en ESPAÑOL que:
 Formato: Texto fluido y profesional, sin bullets excesivos.`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI(() => openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'Eres un asistente que genera resúmenes ejecutivos claros y accionables.' },
@@ -376,7 +391,7 @@ Formato: Texto fluido y profesional, sin bullets excesivos.`;
       ],
       temperature: 0.7,
       max_tokens: 500,
-    });
+    }));
 
     return response.choices[0]?.message?.content?.trim() || 'No se pudo generar el resumen.';
   } catch (error) {
@@ -437,7 +452,7 @@ PREGUNTA DEL USUARIO:
 Responde de forma clara, directa y útil en ESPAÑOL. Si la información no está disponible, dilo claramente.`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI(() => openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'Eres un asistente que responde preguntas sobre la Bitácora del usuario de forma clara y útil.' },
@@ -445,7 +460,7 @@ Responde de forma clara, directa y útil en ESPAÑOL. Si la información no est�
       ],
       temperature: 0.7,
       max_tokens: 1000,
-    });
+    }));
 
     return response.choices[0]?.message?.content?.trim() || 'No se pudo procesar la consulta.';
   } catch (error) {
@@ -694,13 +709,13 @@ INSTRUCCIONES:
       }
     }
 
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI(() => openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages,
       response_format: { type: 'json_object' },
       temperature: 0.5,
       max_tokens: 3000,
-    });
+    }));
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
@@ -737,9 +752,22 @@ INSTRUCCIONES:
         })),
       })),
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Multi-topic Analysis Error:', error);
-    // Fallback to single topic
+    
+    // Check if it's a rate limit/quota error
+    const isRateLimit = error?.status === 429 || 
+                       error?.code === 'rate_limit_exceeded' ||
+                       error?.message?.includes('429') ||
+                       error?.message?.toLowerCase().includes('rate limit') ||
+                       error?.message?.toLowerCase().includes('quota') ||
+                       error?.message?.toLowerCase().includes('exceeded');
+    
+    if (isRateLimit) {
+      throw new Error('Se ha excedido el límite de solicitudes a la API de OpenAI. Por favor, espera unos minutos e intenta de nuevo. Si el problema persiste, verifica tu plan y facturación en OpenAI.');
+    }
+    
+    // Fallback to single topic for other errors
     return {
       isMultiTopic: false,
       overallContext: sanitizedText,

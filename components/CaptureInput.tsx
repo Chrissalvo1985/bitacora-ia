@@ -284,82 +284,108 @@ const CaptureInput: React.FC<CaptureInputProps> = ({ bookId }) => {
   const runAnalysisWithProgress = async (contentText: string, contentAttachment?: Attachment, targetBookId?: string) => {
     const hasAttachment = !!contentAttachment;
     
-    // Step 1: Reading
-    setAnalysisStep('reading');
-    await new Promise(r => setTimeout(r, 400));
-    
-    // Step 2: Analyzing
-    setAnalysisStep('analyzing');
-    
-    // Start the actual analysis
-    const resultPromise = addEntry(contentText, contentAttachment, false, targetBookId);
-    
-    // Step 3: Classifying (after a delay)
-    setTimeout(() => setAnalysisStep('classifying'), 1500);
-    
-    // Step 4: Extracting (after more delay)
-    setTimeout(() => setAnalysisStep('extracting'), 3000);
-    
-    // Wait for actual result
-    const result = await resultPromise;
-    
-    // Step 5: Complete
-    setAnalysisStep('complete');
-    await new Promise(r => setTimeout(r, 500));
-    
-    // Reset progress
-    setAnalysisStep('idle');
-    
-    return result;
+    try {
+      // Step 1: Reading
+      setAnalysisStep('reading');
+      await new Promise(r => setTimeout(r, 400));
+      
+      // Step 2: Analyzing
+      setAnalysisStep('analyzing');
+      
+      // Start the actual analysis
+      const resultPromise = addEntry(contentText, contentAttachment, false, targetBookId);
+      
+      // Step 3: Classifying (after a delay)
+      setTimeout(() => setAnalysisStep('classifying'), 1500);
+      
+      // Step 4: Extracting (after more delay)
+      setTimeout(() => setAnalysisStep('extracting'), 3000);
+      
+      // Wait for actual result
+      const result = await resultPromise;
+      
+      // Step 5: Complete
+      setAnalysisStep('complete');
+      await new Promise(r => setTimeout(r, 500));
+      
+      // Reset progress
+      setAnalysisStep('idle');
+      
+      return result;
+    } catch (error: any) {
+      // Reset progress on error
+      setAnalysisStep('idle');
+      
+      // Check if it's a rate limit error
+      const isRateLimit = error?.message?.includes('límite') || 
+                         error?.message?.includes('rate limit') ||
+                         error?.message?.includes('quota') ||
+                         error?.message?.includes('429');
+      
+      if (isRateLimit) {
+        const errorMsg = error.message || 'Se ha excedido el límite de solicitudes. Por favor, espera unos minutos e intenta de nuevo.';
+        setFileError(errorMsg);
+        setTimeout(() => setFileError(null), 10000); // Show for 10 seconds
+        throw error;
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   };
 
   const handleSubmit = async () => {
-    // If in pen mode, convert canvas to image
-    if (isPenMode && canvasRef.current) {
-      const imageData = convertCanvasToImage();
-      if (imageData) {
-        const drawingAttachment: Attachment = {
-          type: 'image',
-          mimeType: 'image/png',
-          data: imageData,
-          fileName: 'dibujo.png'
-        };
-        
-        // Reset UI but keep expanded for progress
-        clearCanvas();
-        setIsPenMode(false);
-        
-        const result = await runAnalysisWithProgress('', drawingAttachment, bookId);
-        setIsExpanded(false);
-        
-        // Show confirmation modal
-        if (result && 'multiTopicResult' in result && result.multiTopicResult) {
-          setMultiTopicData(result.multiTopicResult);
-          setShowMultiTopicModal(true);
+    try {
+      // If in pen mode, convert canvas to image
+      if (isPenMode && canvasRef.current) {
+        const imageData = convertCanvasToImage();
+        if (imageData) {
+          const drawingAttachment: Attachment = {
+            type: 'image',
+            mimeType: 'image/png',
+            data: imageData,
+            fileName: 'dibujo.png'
+          };
+          
+          // Reset UI but keep expanded for progress
+          clearCanvas();
+          setIsPenMode(false);
+          
+          const result = await runAnalysisWithProgress('', drawingAttachment, bookId);
+          setIsExpanded(false);
+          
+          // Show confirmation modal
+          if (result && 'multiTopicResult' in result && result.multiTopicResult) {
+            setMultiTopicData(result.multiTopicResult);
+            setShowMultiTopicModal(true);
+          }
+          return;
         }
-        return;
       }
-    }
-    
-    if (!text.trim() && !attachment) return;
-    
-    const contentText = text;
-    const contentAttachment = attachment;
-    
-    // Reset input but keep expanded for progress
-    setText('');
-    setAttachment(undefined);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    setIsPenMode(false);
-    clearCanvas();
-    
-    const result = await runAnalysisWithProgress(contentText, contentAttachment, bookId);
-    setIsExpanded(false);
-    
-    // Show confirmation modal
-    if (result && 'multiTopicResult' in result && result.multiTopicResult) {
-      setMultiTopicData(result.multiTopicResult);
-      setShowMultiTopicModal(true);
+      
+      if (!text.trim() && !attachment) return;
+      
+      const contentText = text;
+      const contentAttachment = attachment;
+      
+      // Reset input but keep expanded for progress
+      setText('');
+      setAttachment(undefined);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setIsPenMode(false);
+      clearCanvas();
+      
+      const result = await runAnalysisWithProgress(contentText, contentAttachment, bookId);
+      setIsExpanded(false);
+      
+      // Show confirmation modal
+      if (result && 'multiTopicResult' in result && result.multiTopicResult) {
+        setMultiTopicData(result.multiTopicResult);
+        setShowMultiTopicModal(true);
+      }
+    } catch (error: any) {
+      // Error is already handled in runAnalysisWithProgress
+      console.error('Error submitting entry:', error);
     }
   };
 

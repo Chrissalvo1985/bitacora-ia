@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { Entry, TaskItem, Book } from '../types';
+import { callOpenAI } from './openaiRateLimiter';
 
 const openai = new OpenAI({
   apiKey: import.meta.env.VITE_OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY,
@@ -126,13 +127,13 @@ Busca especialmente:
       } as any);
     }
 
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI(() => openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages,
       response_format: { type: 'json_object' },
       temperature: 0.7,
       max_tokens: 3000,
-    });
+    }));
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
