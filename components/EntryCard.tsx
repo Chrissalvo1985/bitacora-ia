@@ -28,8 +28,8 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
     setConfirmDelete(false);
   }, [deleteEntry, entry.id]);
   
-  // Auto-expand if it has tasks or attachment
-  const hasDetails = entry.tasks.length > 0 || entry.entities.length > 0;
+  // Always allow expansion - all entries can be expanded to see details
+  const hasDetails = entry.tasks.length > 0 || entry.entities.length > 0 || entry.originalText || entry.summary.length > 120;
 
   if (entry.status === EntryStatus.PROCESSING) {
     return (
@@ -55,15 +55,24 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
     ? entry.summary.substring(0, 120) + '...' 
     : entry.summary;
 
+  // Special styling for NOTE and DECISION types
+  const isNoteOrDecision = entry.type === NoteType.NOTE || entry.type === NoteType.DECISION;
+  const cardBorderColor = isNoteOrDecision 
+    ? (entry.type === NoteType.DECISION ? 'border-emerald-200' : 'border-gray-200')
+    : 'border-gray-100';
+  const cardHoverBorder = isNoteOrDecision
+    ? (entry.type === NoteType.DECISION ? 'hover:border-emerald-300' : 'hover:border-gray-300')
+    : 'hover:border-indigo-200';
+
   return (
     <motion.div 
-      className="group bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-indigo-200 transition-all duration-200 overflow-hidden"
+      className={`group bg-white rounded-2xl shadow-sm border ${cardBorderColor} hover:shadow-md ${cardHoverBorder} transition-all duration-200 overflow-hidden`}
       layout
     >
       {/* Compact Header - Always Visible */}
       <div 
-        className={`p-5 md:p-6 cursor-pointer ${hasDetails ? 'hover:bg-gray-50' : ''}`}
-        onClick={() => hasDetails && setIsExpanded(!isExpanded)}
+        className="p-5 md:p-6 cursor-pointer hover:bg-gray-50 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -82,9 +91,16 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
               )}
             </div>
             
-            <p className={`text-base md:text-lg text-gray-800 leading-relaxed ${!isExpanded ? 'line-clamp-2' : 'line-clamp-3'}`}>
+            {/* Always show preview in header, never full summary */}
+            <p className={`text-base md:text-lg text-gray-800 leading-relaxed ${!isExpanded ? 'line-clamp-2' : 'line-clamp-2'}`}>
               {summaryPreview}
             </p>
+            
+            {/* Book name - always visible */}
+            <div className="mt-2 flex items-center gap-2">
+              <ICONS.Book size={14} className="text-gray-400" />
+              <span className="text-xs md:text-sm text-gray-500 font-medium">{bookName}</span>
+            </div>
             
             {/* Quick info in collapsed state */}
             {!isExpanded && entry.entities.length > 0 && (
@@ -102,22 +118,21 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
           </div>
           
           <div className="flex items-start gap-2 flex-shrink-0">
-            {hasDetails && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsExpanded(!isExpanded);
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(!isExpanded);
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
+              title={isExpanded ? "Contraer" : "Ver detalles"}
+            >
+              <motion.div
+                animate={{ rotate: isExpanded ? 90 : 0 }}
+                transition={{ duration: 0.2 }}
               >
-                <motion.div
-                  animate={{ rotate: isExpanded ? 180 : 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <ICONS.ChevronRight size={20} />
-                </motion.div>
-              </button>
-            )}
+                <ICONS.ChevronRight size={20} />
+              </motion.div>
+            </button>
             <button 
               onClick={(e) => {
                 e.stopPropagation();
@@ -142,13 +157,122 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-5 md:px-6 pb-5 md:pb-6 border-t border-gray-50 space-y-4 pt-5">
-              {/* Full Summary - Only show if summary is longer than preview */}
-              {entry.summary.length > 120 && (
-                <p className="text-base md:text-lg text-gray-700 leading-relaxed">
-                  {entry.summary}
-                </p>
+            <div className="px-5 md:px-6 pb-5 md:pb-6 border-t border-gray-50 space-y-5 pt-5">
+              {/* Special formatting for DECISION type */}
+              {entry.type === NoteType.DECISION && (
+                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-xl p-5 border-2 border-emerald-200 shadow-sm">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="bg-emerald-500 p-2 rounded-lg">
+                      <ICONS.Gavel size={20} className="text-white" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-emerald-800 uppercase tracking-wide">
+                        Acuerdo Tomado
+                      </h4>
+                      <p className="text-xs text-emerald-600 mt-0.5">
+                        {new Date(entry.createdAt).toLocaleDateString('es-ES', { 
+                          day: 'numeric', 
+                          month: 'long', 
+                          year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-base text-emerald-900 leading-relaxed font-medium">
+                    {entry.summary}
+                  </p>
+                  {entry.originalText && entry.originalText.trim() !== entry.summary.trim() && (
+                    <div className="mt-4 pt-4 border-t border-emerald-200">
+                      <p className="text-sm text-emerald-700 leading-relaxed">
+                        <span className="font-semibold">Contexto:</span> {entry.originalText}
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
+
+              {/* Special formatting for NOTE type - Enhanced view */}
+              {entry.type === NoteType.NOTE && (
+                <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-5 border border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="bg-gray-500 p-2 rounded-lg">
+                      <ICONS.StickyNote size={20} className="text-white" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wide">
+                        Nota
+                      </h4>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        {new Date(entry.createdAt).toLocaleDateString('es-ES', { 
+                          day: 'numeric', 
+                          month: 'long', 
+                          year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-base text-gray-900 leading-relaxed font-medium">
+                    {entry.summary}
+                  </p>
+                  {entry.originalText && entry.originalText.trim() !== entry.summary.trim() && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        <span className="font-semibold">Texto original:</span> {entry.originalText}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Full Summary - Only show for other types (TASK, IDEA, RISK) */}
+              {entry.type !== NoteType.DECISION && entry.type !== NoteType.NOTE && (
+                <div className="bg-white rounded-xl p-4 border border-gray-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ICONS.Sparkles size={16} className="text-indigo-500" />
+                    <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
+                      Resumen
+                    </h4>
+                  </div>
+                  <p className="text-base md:text-lg text-gray-800 leading-relaxed">
+                    {entry.summary}
+                  </p>
+                </div>
+              )}
+
+              {/* Original Text - Show if available and different from summary (only for non-DECISION/NOTE types) */}
+              {entry.type !== NoteType.DECISION && entry.type !== NoteType.NOTE && entry.originalText && entry.originalText.trim() !== entry.summary.trim() && (
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ICONS.FileText size={16} className="text-gray-500" />
+                    <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                      Texto Original
+                    </h4>
+                  </div>
+                  <p className="text-sm md:text-base text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {entry.originalText}
+                  </p>
+                </div>
+              )}
+
+              {/* Metadata Section */}
+              <div className="grid grid-cols-2 gap-3 text-sm bg-gray-50 rounded-lg p-3 border border-gray-100">
+                <div className="flex items-center gap-2 text-gray-600">
+                  <ICONS.Calendar size={14} className="text-gray-400" />
+                  <span className="text-xs">
+                    {new Date(entry.createdAt).toLocaleDateString('es-ES', { 
+                      day: 'numeric', 
+                      month: 'long', 
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <ICONS.Book size={14} className="text-gray-400" />
+                  <span className="text-xs font-medium">{bookName}</span>
+                </div>
+              </div>
 
               {/* Tasks */}
               {entry.tasks.length > 0 && (
