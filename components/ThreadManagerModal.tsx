@@ -20,13 +20,19 @@ const ThreadManagerModal: React.FC<ThreadManagerModalProps> = ({
   currentThreadId,
   bookId
 }) => {
-  const { threads, updateEntryThread, createThread } = useBitacora();
+  const { threads, entries, updateEntryThread, createThread } = useBitacora();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(currentThreadId || null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newThreadTitle, setNewThreadTitle] = useState('');
 
-  // Filter threads for this book
-  const bookThreads = threads.filter(t => t.bookId === bookId);
+  // Filter threads for this book that have at least one entry
+  // Always include current thread even if it has no entries (user might be adding first entry)
+  const bookThreads = threads.filter(t => {
+    if (t.bookId !== bookId) return false;
+    // Include if it has entries OR if it's the current thread
+    const hasEntries = entries.some(e => e.threadId === t.id);
+    return hasEntries || t.id === currentThreadId;
+  });
   const currentThread = currentThreadId ? threads.find(t => t.id === currentThreadId) : undefined;
 
   const handleSave = async () => {

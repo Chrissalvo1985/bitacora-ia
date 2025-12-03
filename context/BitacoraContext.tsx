@@ -5,8 +5,10 @@ import { analyzeDocument, DocumentInsight } from '../services/documentAnalysisSe
 import { findRelatedEntry } from '../services/entryMatchingService';
 import * as dataService from '../services/dataService';
 import { initDatabase } from '../services/db';
+import * as db from '../services/db';
 import { AuthContext } from './AuthContext';
 import { CacheService, CACHE_KEYS } from '../services/cacheService';
+import { postProcessEntry } from '../services/improvedPipeline';
 
 // Simple ID generator
 const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -565,6 +567,11 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
       // Update local state immediately with complete entry
       setEntries(prev => prev.map(e => e.id === tempEntryId ? finalEntry : e));
 
+      // Post-process: generate embeddings and detect relations (async, non-blocking)
+      postProcessEntry(finalEntry.id, finalEntry, user.id, entries).catch(error => {
+        console.error('Error in post-processing entry (non-blocking):', error);
+      });
+
       // Refresh data from DB to ensure tasks have proper IDs
       await refreshData();
     } catch (error) {
@@ -686,6 +693,11 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
             suggestedPriority: 'MEDIUM' as any
           };
           await dataService.saveEntry(entry, user.id, analysis);
+          
+          // Post-process: generate embeddings and detect relations (async, non-blocking)
+          postProcessEntry(entry.id, entry, user.id, entries).catch(error => {
+            console.error('Error in post-processing entry (non-blocking):', error);
+          });
         } catch (error) {
           console.error('Error saving entry:', error);
         }
@@ -826,7 +838,10 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const toggleTask = async (entryId: string, taskIndex: number) => {
     const entry = entries.find(e => e.id === entryId);
-    if (!entry || !entry.tasks[taskIndex]) return;
+    if (!entry || !entry.tasks[taskIndex]) {
+      console.warn('Task not found:', { entryId, taskIndex });
+      return;
+    }
 
     const task = entry.tasks[taskIndex];
     const newIsDone = !task.isDone;
@@ -841,22 +856,49 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
       return e;
     }));
 
-    // Update in DB if task has ID
-    if (task.id) {
-      try {
+    // Update in DB
+    try {
+      if (task.id) {
+        // Task has ID, update directly
         await dataService.updateTaskStatus(task.id, newIsDone);
-      } catch (error) {
-        console.error('Error updating task in DB:', error);
-        // Revert optimistic update
-        setEntries(prev => prev.map(e => {
-          if (e.id === entryId) {
-            const newTasks = [...e.tasks];
-            newTasks[taskIndex] = { ...newTasks[taskIndex], isDone: !newIsDone };
-            return { ...e, tasks: newTasks };
-          }
-          return e;
-        }));
+      } else {
+        // Task doesn't have ID yet, need to find it by entryId and description
+        // This can happen if the task was just created
+        const dbTasks = await db.getTasksByEntryId(entryId);
+        const matchingTask = dbTasks.find(t => {
+          const taskDesc = t.description.trim();
+          const currentDesc = task.description.trim();
+          return taskDesc === currentDesc;
+        });
+        
+        if (matchingTask && matchingTask.id) {
+          await dataService.updateTaskStatus(matchingTask.id, newIsDone);
+          // Update the task ID in local state
+          setEntries(prev => prev.map(e => {
+            if (e.id === entryId) {
+              const newTasks = [...e.tasks];
+              if (newTasks[taskIndex]) {
+                newTasks[taskIndex] = { ...newTasks[taskIndex], id: matchingTask.id, isDone: newIsDone };
+              }
+              return { ...e, tasks: newTasks };
+            }
+            return e;
+          }));
+        } else {
+          console.warn('Could not find task in DB to update:', { entryId, taskIndex, task, dbTasks });
+        }
       }
+    } catch (error) {
+      console.error('Error updating task in DB:', error);
+      // Revert optimistic update
+      setEntries(prev => prev.map(e => {
+        if (e.id === entryId) {
+          const newTasks = [...e.tasks];
+          newTasks[taskIndex] = { ...newTasks[taskIndex], isDone: !newIsDone };
+          return { ...e, tasks: newTasks };
+        }
+        return e;
+      }));
     }
   };
 
@@ -880,6 +922,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (!user?.id) return [];
     
     try {
+      // Use traditional text search only
       return await dataService.searchEntriesInDb(user.id, filters);
     } catch (error) {
       console.error('Error searching entries:', error);
@@ -923,18 +966,37 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const queryAI = async (query: string): Promise<string> => {
-      const context = {
-      entries: entries.map(e => ({
+    // Sort entries by most recent first
+    const sortedEntries = [...entries].sort((a, b) => b.createdAt - a.createdAt);
+    
+    const context = {
+      entries: sortedEntries.map(e => ({
         summary: e.summary,
         type: e.type,
         createdAt: e.createdAt,
         bookName: getBookName(e.bookId),
+        // Include full text content for better context
+        content: e.aiRewrittenText || e.summary,
+        // Include entities mentioned
+        entities: e.entities.map(ent => `${ent.name} (${ent.type})`).join(', '),
+        // Include thread info if available
+        threadTitle: e.threadId ? getThreadById(e.threadId)?.title : undefined,
       })),
       books: books.map(b => ({
         name: b.name,
         description: b.description,
       })),
-      tasks: entries.flatMap(e => e.tasks),
+      tasks: entries.flatMap(e => e.tasks.map(t => ({
+        ...t,
+        entrySummary: e.summary,
+        entryBookName: getBookName(e.bookId),
+        entryType: e.type,
+      }))),
+      threads: threads.map(t => ({
+        title: t.title,
+        bookName: getBookName(t.bookId),
+        entryCount: entries.filter(e => e.threadId === t.id).length,
+      })),
     };
 
     return await queryBitacora(query, context);

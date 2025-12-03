@@ -1,13 +1,16 @@
-import React, { useState, memo, useCallback } from 'react';
+import React, { useState, memo, useCallback, useEffect } from 'react';
 import { Entry, EntryStatus, NoteType } from '../types';
 import { ICONS, TYPE_STYLES, TYPE_ICONS, TYPE_LABELS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmDialog from './ConfirmDialog';
 import ThreadManagerModal from './ThreadManagerModal';
+import { AuthContext } from '../context/AuthContext';
 
 const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, compact = false }) => {
   const { toggleTask, deleteEntry, getBookName, getThreadById, threads } = useBitacora();
+  const authContext = React.useContext(AuthContext);
+  const user = authContext?.user;
   const bookName = getBookName(entry.bookId);
   const thread = entry.threadId ? getThreadById(entry.threadId) : undefined;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -99,7 +102,8 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
   const config = typeConfig[entry.type] || typeConfig[NoteType.NOTE];
 
   return (
-    <motion.div 
+    <motion.div
+      id={`entry-${entry.id}`} 
       className={`group bg-white rounded-2xl shadow-sm border ${config.border} hover:shadow-lg transition-all duration-300 overflow-hidden`}
       layout
     >

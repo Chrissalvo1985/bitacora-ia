@@ -106,6 +106,30 @@ const Sidebar: React.FC<SidebarProps> = memo(({
             <ICONS.Sparkles size={20} />
             Preguntar IA
           </button>
+          
+          <button
+            onClick={() => handleNav('people')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all duration-200 ${
+              activeView === 'people' 
+              ? 'bg-gray-900 text-white shadow-md transform scale-[1.02]' 
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+          >
+            <ICONS.Users size={20} />
+            Personas
+          </button>
+
+          <button
+            onClick={() => handleNav('insights')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all duration-200 ${
+              activeView === 'insights' 
+              ? 'bg-gray-900 text-white shadow-md transform scale-[1.02]' 
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+          >
+            <ICONS.BarChart3 size={20} />
+            Insights
+          </button>
 
           {/* Books Menu Button */}
           <button

@@ -403,53 +403,135 @@ Formato: Texto fluido y profesional, sin bullets excesivos.`;
 export const queryBitacora = async (
   query: string,
   context: {
-    entries: Array<{ summary: string; type: string; createdAt: number; bookName: string }>;
-    books: Array<{ name: string; context?: string }>;
-    tasks: Array<{ description: string; assignee?: string; dueDate?: string; isDone: boolean; completionNotes?: string }>;
+    entries: Array<{ 
+      summary: string; 
+      type: string; 
+      createdAt: number; 
+      bookName: string;
+      content?: string;
+      entities?: string;
+      threadTitle?: string;
+    }>;
+    books: Array<{ name: string; description?: string }>;
+    tasks: Array<{ 
+      description: string; 
+      assignee?: string; 
+      dueDate?: string; 
+      isDone: boolean; 
+      completionNotes?: string;
+      entrySummary?: string;
+      entryBookName?: string;
+      entryType?: string;
+    }>;
+    threads?: Array<{ title: string; bookName: string; entryCount: number }>;
   }
 ): Promise<string> => {
-  const entriesText = context.entries
-    .slice(0, 50) // Limit to recent 50 entries
-    .map(e => `- [${e.type}] ${e.summary} (${e.bookName}, ${new Date(e.createdAt).toLocaleDateString('es-ES')})`)
+  // Use most recent entries (already sorted by context)
+  const recentEntries = context.entries.slice(0, 50);
+  const entriesText = recentEntries
+    .map(e => {
+      const date = new Date(e.createdAt).toLocaleDateString('es-ES');
+      const entitiesInfo = e.entities ? ` | Menciona: ${e.entities}` : '';
+      const threadInfo = e.threadTitle ? ` | Hilo: "${e.threadTitle}"` : '';
+      const content = e.content && e.content !== e.summary ? `\n  Contenido: ${e.content}` : '';
+      return `- [${e.type}] ${e.summary}${content} (${e.bookName}, ${date})${entitiesInfo}${threadInfo}`;
+    })
     .join('\n');
 
-  // Tareas pendientes
-  const pendingTasksText = context.tasks
-    .filter(t => !t.isDone)
-    .map(t => `- ${t.description}${t.assignee ? ` (${t.assignee})` : ''}${t.dueDate ? ` [${t.dueDate}]` : ''}`)
-    .join('\n');
+  // Tareas PENDIENTES (NO completadas) - claramente marcadas
+  const pendingTasks = context.tasks.filter(t => !t.isDone);
+  const pendingTasksText = pendingTasks.length > 0
+    ? pendingTasks
+        .map(t => {
+          const contextInfo = t.entrySummary ? ` | De: "${t.entrySummary}" (${t.entryBookName || ''})` : '';
+          return `- [PENDIENTE] ${t.description}${t.assignee ? ` (asignado a: ${t.assignee})` : ''}${t.dueDate ? ` [${t.dueDate}]` : ''}${contextInfo}`;
+        })
+        .join('\n')
+    : 'No hay tareas pendientes';
 
-  // Tareas completadas con observaciones (últimas 30)
-  const completedTasksText = context.tasks
-    .filter(t => t.isDone && t.completionNotes)
-    .slice(0, 30)
-    .map(t => `- ${t.description}${t.assignee ? ` (${t.assignee})` : ''}${t.dueDate ? ` [${t.dueDate}]` : ''} | Observaciones: ${t.completionNotes}`)
-    .join('\n');
+  // Tareas COMPLETADAS - claramente marcadas como completadas
+  const completedTasks = context.tasks.filter(t => t.isDone);
+  const completedTasksText = completedTasks.length > 0
+    ? completedTasks
+        .slice(0, 50) // Mostrar más tareas completadas para contexto
+        .map(t => {
+          const contextInfo = t.entrySummary ? ` | De: "${t.entrySummary}" (${t.entryBookName || ''})` : '';
+          const notes = t.completionNotes ? ` | Observaciones: ${t.completionNotes}` : '';
+          return `- [COMPLETADA] ${t.description}${t.assignee ? ` (${t.assignee})` : ''}${t.dueDate ? ` [${t.dueDate}]` : ''}${notes}${contextInfo}`;
+        })
+        .join('\n')
+    : 'No hay tareas completadas';
 
   const booksText = context.books.map(b => `- ${b.name}${b.description ? `: ${b.description}` : ''}`).join('\n');
+  
+  // Threads information
+  const threadsText = context.threads && context.threads.length > 0
+    ? context.threads
+        .slice(0, 20)
+        .map(t => `- "${t.title}" (${t.bookName}, ${t.entryCount} entrada${t.entryCount !== 1 ? 's' : ''})`)
+        .join('\n')
+    : '';
+
+  // Detectar si la pregunta es sobre pendientes
+  const isAboutPending = /pendiente|tengo que|debo|necesito|falta|por hacer|sin hacer|no he|no he hecho/i.test(query);
+  const isAboutPerson = /con\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+|pendiente.*[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+|[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+.*pendiente/i.test(query);
 
   const prompt = `Eres un asistente inteligente que responde preguntas sobre la Bitácora del usuario.
 
-CONTEXTO DISPONIBLE:
+CONTEXTO DISPONIBLE (INFORMACIÓN ACTUALIZADA):
 
 Libretas:
 ${booksText}
 
-Entradas recientes:
+${threadsText ? `Hilos de conversación:\n${threadsText}\n` : ''}
+
+Entradas recientes (ordenadas por fecha, más recientes primero):
 ${entriesText}
 
-Pendientes activos:
-${pendingTasksText || 'No hay pendientes activos'}
+═══════════════════════════════════════════════════════════
+TAREAS PENDIENTES (NO COMPLETADAS - ESTAS SON LAS QUE ESTÁN ACTIVAS):
+═══════════════════════════════════════════════════════════
+${pendingTasksText}
 
-Tareas completadas recientes (con observaciones):
-${completedTasksText || 'No hay tareas completadas con observaciones'}
+═══════════════════════════════════════════════════════════
+TAREAS COMPLETADAS (YA TERMINADAS - NO SON PENDIENTES):
+═══════════════════════════════════════════════════════════
+${completedTasksText}
 
-IMPORTANTE: Las observaciones de las tareas completadas contienen información valiosa sobre el resultado o estado final de esas tareas. Úsalas para responder preguntas sobre qué se implementó, qué se encontró, o cualquier detalle relevante mencionado en las observaciones.
+INSTRUCCIONES CRÍTICAS Y OBLIGATORIAS:
+
+1. DIFERENCIA ENTRE PENDIENTES Y COMPLETADAS (MUY IMPORTANTE):
+   - Las tareas marcadas como [PENDIENTE] están ACTIVAS y sin completar.
+   - Las tareas marcadas como [COMPLETADA] ya están TERMINADAS y NO son pendientes.
+   - NUNCA menciones una tarea [COMPLETADA] como si fuera pendiente.
+   - Si preguntan sobre "pendientes" o "qué tengo que hacer", SOLO menciona tareas [PENDIENTE].
+   - Si preguntan sobre "qué se completó" o "qué se hizo", menciona tareas [COMPLETADA].
+
+2. PREGUNTAS SOBRE PENDIENTES CON PERSONAS:
+   - Si preguntan "¿qué tengo pendiente con [Persona]?", SOLO menciona tareas [PENDIENTE] que mencionen a esa persona.
+   - NO menciones tareas [COMPLETADA] como pendientes, incluso si mencionan a esa persona.
+   - Si todas las tareas con esa persona están completadas, di: "No tienes tareas pendientes con [Persona]. Las tareas relacionadas ya están completadas: [lista tareas completadas]".
+
+3. USO DE INFORMACIÓN:
+   - Usa SIEMPRE la información más reciente disponible.
+   - Las entradas están ordenadas por fecha (más recientes primero).
+   - Las observaciones de las tareas completadas contienen información valiosa sobre el resultado o estado final.
+
+4. CONTEXTO ADICIONAL:
+   - Si una entrada menciona entidades (personas, proyectos, temas), tenlas en cuenta al responder.
+   - Si una entrada pertenece a un hilo de conversación, considera el contexto del hilo completo.
+   - Si el contenido de una entrada es diferente del resumen, usa el contenido completo para mayor precisión.
+
+5. PRECISIÓN:
+   - Si la pregunta es sobre algo que acaba de suceder o actualizarse, prioriza las entradas más recientes.
+   - Si hay información reciente que contradice información antigua, prioriza la información más reciente.
 
 PREGUNTA DEL USUARIO:
 "${query}"
 
-Responde de forma clara, directa y útil en ESPAÑOL. Si la información no está disponible, dilo claramente.`;
+Responde de forma clara, directa y útil en ESPAÑOL. Si la información no está disponible, dilo claramente. 
+${isAboutPending ? '⚠️ ATENCIÓN: Esta pregunta es sobre PENDIENTES. SOLO menciona tareas marcadas como [PENDIENTE]. NO menciones tareas [COMPLETADA] como si fueran pendientes.' : ''}
+${isAboutPerson ? '⚠️ ATENCIÓN: Esta pregunta menciona una persona. Si preguntan sobre pendientes, SOLO menciona tareas [PENDIENTE] relacionadas con esa persona.' : ''}`;
 
   try {
     const response = await callOpenAI(() => openai.chat.completions.create({
@@ -979,4 +1061,491 @@ Responde SOLO con el texto reescrito, sin explicaciones adicionales, sin comilla
     return sanitizedText;
   }
 };
+
+// ============================================================================
+// REORGANIZED PIPELINE FUNCTIONS
+// ============================================================================
+
+/**
+ * Analyzes topics in the text
+ */
+export async function analyzeTopics(
+  text: string,
+  context: { existingBooks: Book[]; existingEntries?: Entry[] }
+): Promise<string[]> {
+  const booksContext = context.existingBooks.map(b => 
+    `- "${b.name}"${b.description ? ` (${b.description})` : ''}`
+  ).join('\n');
+
+  const prompt = `Extrae los temas principales de este texto:
+
+"${text.slice(0, 2000)}"
+
+Libretas existentes:
+${booksContext}
+
+Responde con un JSON array de temas principales, máximo 5 temas.`;
+
+  try {
+    const response = await callOpenAI(() => openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Eres un asistente que extrae temas principales de textos.' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.5,
+      max_tokens: 300,
+    }));
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) return [];
+
+    const data = JSON.parse(content);
+    return Array.isArray(data.topics) ? data.topics : [];
+  } catch (error) {
+    console.error('Error analyzing topics:', error);
+    return [];
+  }
+}
+
+/**
+ * Extracts tasks from text
+ */
+export async function extractTasks(
+  text: string,
+  context: { existingTasks?: TaskItem[] }
+): Promise<Array<{ description: string; assignee?: string; dueDate?: string; priority?: string }>> {
+  const prompt = `Extrae las tareas pendientes de este texto:
+
+"${text.slice(0, 2000)}"
+
+Responde con un JSON object con un array "tasks" de tareas. Cada tarea debe tener:
+- description: descripción de la tarea
+- assignee: responsable si se menciona
+- dueDate: fecha en formato YYYY-MM-DD si se menciona
+- priority: LOW, MEDIUM o HIGH`;
+
+  try {
+    const response = await callOpenAI(() => openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Eres un asistente que extrae tareas pendientes de textos.' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.5,
+      max_tokens: 500,
+    }));
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) return [];
+
+    const data = JSON.parse(content);
+    return Array.isArray(data.tasks) ? data.tasks : [];
+  } catch (error) {
+    console.error('Error extracting tasks:', error);
+    return [];
+  }
+}
+
+/**
+ * Extracts decisions from text
+ */
+export async function extractDecisions(
+  text: string,
+  context: Record<string, any> = {}
+): Promise<string[]> {
+  const prompt = `Extrae las decisiones tomadas o acuerdos de este texto:
+
+"${text.slice(0, 2000)}"
+
+Responde con un JSON object con un array "decisions" de decisiones.`;
+
+  try {
+    const response = await callOpenAI(() => openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Eres un asistente que extrae decisiones y acuerdos de textos.' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.5,
+      max_tokens: 500,
+    }));
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) return [];
+
+    const data = JSON.parse(content);
+    return Array.isArray(data.decisions) ? data.decisions : [];
+  } catch (error) {
+    console.error('Error extracting decisions:', error);
+    return [];
+  }
+}
+
+/**
+ * Classifies notebook assignment
+ */
+export async function classifyNotebook(
+  text: string,
+  existingBooks: Book[]
+): Promise<{ targetBookName: string; isNewBook: boolean }> {
+  const booksContext = existingBooks.map(b => 
+    `- "${b.name}"${b.description ? ` (${b.description})` : ''}`
+  ).join('\n');
+
+  const prompt = `Asigna este texto a la libreta correcta:
+
+"${text.slice(0, 2000)}"
+
+Libretas existentes:
+${booksContext || 'No hay libretas existentes'}
+
+Responde con JSON:
+{
+  "targetBookName": "nombre exacto de libreta existente o nuevo nombre",
+  "isNewBook": true/false
+}`;
+
+  try {
+    const response = await callOpenAI(() => openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Eres un asistente que asigna textos a libretas correctas.' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+      max_tokens: 200,
+    }));
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return { targetBookName: 'Bandeja de Entrada', isNewBook: false };
+    }
+
+    const data = JSON.parse(content);
+    return {
+      targetBookName: data.targetBookName || 'Bandeja de Entrada',
+      isNewBook: data.isNewBook || false,
+    };
+  } catch (error) {
+    console.error('Error classifying notebook:', error);
+    return { targetBookName: 'Bandeja de Entrada', isNewBook: false };
+  }
+}
+
+// ============================================================================
+// EMBEDDING-ENHANCED FUNCTIONS
+// ============================================================================
+
+/**
+ * Updates book context using embeddings to find related notes
+ */
+export async function updateBookContextWithEmbeddings(
+  bookName: string,
+  currentContext: string | undefined,
+  newEntrySummary: string,
+  userId?: string
+): Promise<string> {
+  // Import here to avoid circular dependencies
+  const embeddingService = await import('./embeddingService');
+  const dataService = await import('./dataService');
+  
+  try {
+    // Generate embedding for new entry
+    const newEmbedding = await embeddingService.generateEmbedding(newEntrySummary);
+    
+    // Find similar entries if userId is provided
+    let similarContext = '';
+    if (userId) {
+      const similarEntries = await embeddingService.findSimilarEntries(newEmbedding, 5, 0.6, userId);
+      similarContext = similarEntries
+        .slice(0, 3)
+        .map(se => `- ${se.entry.summary} (similitud: ${(se.similarity * 100).toFixed(0)}%)`)
+        .join('\n');
+    }
+    
+    const prompt = `Actualiza la descripción de esta libreta considerando:
+    
+Contexto actual: "${currentContext || 'Sin descripción aún.'}"
+
+Nueva entrada: "${newEntrySummary}"
+
+${similarContext ? `Notas relacionadas (por similitud semántica):\n${similarContext}` : ''}
+
+Genera una descripción actualizada (máximo 2 frases) que integre el contexto anterior con la nueva información${similarContext ? ' y las notas relacionadas' : ''}.`;
+
+    const response = await callOpenAI(() => openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Eres un asistente que genera descripciones concisas y profesionales.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 200,
+    }));
+
+    return response.choices[0]?.message?.content?.trim() || currentContext || '';
+  } catch (error) {
+    console.error('Error updating book context with embeddings:', error);
+    // Fallback to original function
+    return updateBookContext(bookName, currentContext, newEntrySummary);
+  }
+}
+
+/**
+ * Queries bitácora with semantic search
+ */
+export async function queryBitacoraWithSemantic(
+  query: string,
+  context: {
+    entries: Array<{ summary: string; type: string; createdAt: number; bookName: string }>;
+    books: Array<{ name: string; description?: string }>;
+    tasks: Array<{ description: string; assignee?: string; dueDate?: string; isDone: boolean; completionNotes?: string }>;
+    userId?: string;
+  }
+): Promise<string> {
+  // Import here to avoid circular dependencies
+  const { generateEmbedding, findSimilarEntries } = await import('./embeddingService');
+  
+  try {
+    // Generate embedding for query
+    const queryEmbedding = await generateEmbedding(query);
+    
+    // Find semantically similar entries
+    const similarEntries = context.userId 
+      ? await findSimilarEntries(queryEmbedding, 10, 0.6, context.userId)
+      : [];
+    
+    // Combine semantic results with text-based context
+    const semanticContext = similarEntries
+      .slice(0, 5)
+      .map(se => `- [${se.entry.type}] ${se.entry.summary} (${se.entry.bookName}, similitud: ${(se.similarity * 100).toFixed(0)}%)`)
+      .join('\n');
+    
+    // Use existing queryBitacora but enhance with semantic results
+    const enhancedContext = {
+      ...context,
+      entries: [
+        ...context.entries,
+        ...similarEntries.map(se => ({
+          summary: se.entry.summary,
+          type: se.entry.type,
+          createdAt: se.entry.createdAt,
+          bookName: se.entry.bookId, // Will be resolved by getBookName
+        })),
+      ],
+    };
+    
+    // Call original function with enhanced context
+    const textBasedAnswer = await queryBitacora(query, context);
+    
+    // If we have semantic results, combine them
+    if (semanticContext) {
+      const combinedPrompt = `Pregunta: "${query}"
+
+Respuesta basada en búsqueda de texto:
+${textBasedAnswer}
+
+Notas relacionadas semánticamente:
+${semanticContext}
+
+Mejora la respuesta incorporando información de las notas relacionadas semánticamente si es relevante.`;
+
+      const response = await callOpenAI(() => openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Eres un asistente que combina información de búsqueda de texto y búsqueda semántica.' },
+          { role: 'user', content: combinedPrompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+      }));
+
+      return response.choices[0]?.message?.content?.trim() || textBasedAnswer;
+    }
+    
+    return textBasedAnswer;
+  } catch (error) {
+    console.error('Error in semantic query, falling back to text-based:', error);
+    return queryBitacora(query, context);
+  }
+}
+
+/**
+ * Generates a hash from entries to detect changes
+ * Includes IDs, timestamps, summaries, and task completion status to detect any changes
+ */
+function generateEntriesHash(entries: Array<{ 
+  id?: string; 
+  createdAt: number; 
+  summary?: string;
+  tasks?: Array<{ description: string; isDone: boolean; completionNotes?: string }>;
+}>): string {
+  // Create a hash from entry IDs, timestamps, summaries, and task states
+  // This ensures we detect both new entries and updates to existing ones
+  const sorted = [...entries]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map(e => {
+      const taskHash = e.tasks 
+        ? e.tasks.map(t => `${t.description}_${t.isDone}_${t.completionNotes || ''}`).join('|')
+        : '';
+      return `${e.id || ''}_${e.createdAt}_${e.summary || ''}_${taskHash}`;
+    })
+    .join('||');
+  
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const char = sorted.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * Generates a summary of interactions with a specific person (with caching)
+ */
+export async function generatePersonInteractionSummary(
+  personName: string,
+  entries: Array<{
+    id?: string;
+    summary: string;
+    type: string;
+    createdAt: number;
+    originalText?: string;
+    tasks?: Array<{ description: string; isDone: boolean; completionNotes?: string }>;
+  }>,
+  userId?: string
+): Promise<string> {
+  if (entries.length === 0) {
+    return `No hay interacciones registradas con ${personName}.`;
+  }
+
+  // Check cache if userId is provided
+  if (userId) {
+    const { getPersonSummary, savePersonSummary } = await import('./db');
+    const entriesHash = generateEntriesHash(entries);
+    const lastEntryTimestamp = Math.max(...entries.map(e => e.createdAt));
+    
+    const cached = await getPersonSummary(userId, personName);
+    
+    // Check if we need to regenerate:
+    // 1. No cache exists
+    // 2. Hash doesn't match (content changed)
+    // 3. Last entry timestamp is newer than cached (new entry added)
+    const needsRegeneration = !cached || 
+      cached.entries_hash !== entriesHash || 
+      lastEntryTimestamp > cached.last_entry_timestamp;
+    
+    if (!needsRegeneration && cached) {
+      // Cache is valid, return it
+      return cached.summary;
+    }
+    
+    // Generate new summary
+    const summary = await generatePersonInteractionSummaryInternal(personName, entries);
+    
+    // Save to cache
+    try {
+      await savePersonSummary(userId, personName, summary, entriesHash, lastEntryTimestamp);
+    } catch (error) {
+      console.error('Error saving person summary to cache:', error);
+    }
+    
+    return summary;
+  }
+  
+  // No cache, generate directly
+  return generatePersonInteractionSummaryInternal(personName, entries);
+}
+
+/**
+ * Internal function that actually generates the summary
+ */
+async function generatePersonInteractionSummaryInternal(
+  personName: string,
+  entries: Array<{
+    summary: string;
+    type: string;
+    createdAt: number;
+    originalText?: string;
+    tasks?: Array<{ description: string; isDone: boolean; completionNotes?: string }>;
+  }>
+): Promise<string> {
+
+  // Sort entries by date (most recent first)
+  const sortedEntries = [...entries].sort((a, b) => b.createdAt - a.createdAt);
+  
+  // Extract completed tasks related to this person
+  const completedTasks = entries
+    .flatMap(e => (e.tasks || [])
+      .filter(t => t.isDone && t.completionNotes)
+      .map(t => ({
+        description: t.description,
+        completionNotes: t.completionNotes,
+        date: e.createdAt
+      }))
+    )
+    .sort((a, b) => b.date - a.date);
+
+  const entriesText = sortedEntries
+    .slice(0, 30) // Limit to recent 30 entries
+    .map(e => {
+      const date = new Date(e.createdAt).toLocaleDateString('es-ES');
+      const tasksInfo = e.tasks && e.tasks.length > 0
+        ? ` | Tareas: ${e.tasks.filter(t => t.isDone).length} completadas, ${e.tasks.filter(t => !t.isDone).length} pendientes`
+        : '';
+      return `- [${e.type}] ${e.summary} (${date})${tasksInfo}`;
+    })
+    .join('\n');
+
+  const completedTasksText = completedTasks
+    .slice(0, 10)
+    .map(t => `- ${t.description} | ${t.completionNotes} (${new Date(t.date).toLocaleDateString('es-ES')})`)
+    .join('\n');
+
+  const prompt = `Eres un asistente que genera resúmenes cortos y concisos de interacciones con personas.
+
+PERSONA: ${personName}
+
+INTERACCIONES REGISTRADAS:
+${entriesText}
+
+${completedTasksText ? `TAREAS COMPLETADAS RECIENTES:\n${completedTasksText}` : ''}
+
+Genera UNA SOLA FRASE CORTA en ESPAÑOL que resuma las interacciones con ${personName}. Debe incluir:
+- Contexto principal de las interacciones
+- Último tema cerrado o completado (si hay tareas completadas)
+- Estado actual o tema más reciente
+
+Formato: Una sola frase, máximo 30 palabras. Directo y conciso.
+Ejemplos:
+- "${personName}: Último tema cerrado fue el sueldo de los analistas. Trabajamos principalmente en revisión de sueldos y ajustes salariales."
+- "${personName}: Colaboración en paneles BI. Último tema completado: corrección del panel de supervisores."
+- "${personName}: ${entries.length} interacciones sobre [tema principal]. Estado actual: [breve estado]."
+
+IMPORTANTE: Solo una frase, sin puntos adicionales, sin viñetas, sin párrafos.`;
+
+  try {
+    const response = await callOpenAI(() => openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Eres un asistente que genera resúmenes ejecutivos de interacciones con personas de forma clara y útil.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 150,
+    }));
+
+    return response.choices[0]?.message?.content?.trim() || `Resumen de interacciones con ${personName}: ${entries.length} nota${entries.length !== 1 ? 's' : ''} registrada${entries.length !== 1 ? 's' : ''}.`;
+  } catch (error) {
+    console.error('Error generating person interaction summary:', error);
+    return `Resumen de interacciones con ${personName}: ${entries.length} nota${entries.length !== 1 ? 's' : ''} registrada${entries.length !== 1 ? 's' : ''}. Última interacción: ${new Date(sortedEntries[0]?.createdAt || 0).toLocaleDateString('es-ES')}.`;
+  }
+}
 

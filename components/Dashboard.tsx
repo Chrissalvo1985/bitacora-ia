@@ -193,7 +193,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
           <h1 className="text-xl md:text-2xl lg:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 via-indigo-800 to-gray-900 tracking-tight mb-1 leading-tight">
             {greeting}
           </h1>
-          <p className="text-xs md:text-sm text-gray-500">
+          <p className="text-xs md:text-base text-gray-500">
             <span className="font-semibold text-indigo-600">{openTasks} misiones</span> • <span className="font-semibold text-gray-700">{books.length} libretas</span>
           </p>
         </div>
@@ -210,22 +210,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
 
           {/* Stats Cards - Compact */}
           <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg md:rounded-xl p-3 md:p-4 border border-indigo-100 shadow-sm">
-            <h3 className="text-xs md:text-sm font-bold text-gray-700 mb-3 md:mb-4 flex items-center gap-2">
-              <ICONS.BarChart3 size={16} className="md:w-4 md:h-4" />
+            <h3 className="text-xs md:text-base lg:text-lg font-bold text-gray-700 mb-3 md:mb-4 flex items-center gap-2">
+              <ICONS.BarChart3 size={16} className="md:w-5 md:h-5" />
               Resumen
             </h3>
             <div className="grid grid-cols-3 gap-2 md:gap-3">
               <div className="bg-white rounded-md md:rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow transition-shadow">
-                <p className="text-lg md:text-xl lg:text-2xl font-bold text-gray-800 mb-0.5">{totalEntries}</p>
-                <p className="text-xs text-gray-500 font-medium">Entradas</p>
+                <p className="text-lg md:text-2xl lg:text-3xl font-bold text-gray-800 mb-0.5">{totalEntries}</p>
+                <p className="text-xs md:text-sm text-gray-500 font-medium">Entradas</p>
               </div>
               <div className="bg-white rounded-md md:rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow transition-shadow">
-                <p className="text-lg md:text-xl lg:text-2xl font-bold text-indigo-600 mb-0.5">{openTasks}</p>
-                <p className="text-xs text-gray-500 font-medium">Pendientes</p>
+                <p className="text-lg md:text-2xl lg:text-3xl font-bold text-indigo-600 mb-0.5">{openTasks}</p>
+                <p className="text-xs md:text-sm text-gray-500 font-medium">Pendientes</p>
               </div>
               <div className="bg-white rounded-md md:rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow transition-shadow">
-                <p className="text-lg md:text-xl lg:text-2xl font-bold text-emerald-600 mb-0.5">{completedTasks}</p>
-                <p className="text-xs text-gray-500 font-medium">Completadas</p>
+                <p className="text-lg md:text-2xl lg:text-3xl font-bold text-emerald-600 mb-0.5">{completedTasks}</p>
+                <p className="text-xs md:text-sm text-gray-500 font-medium">Completadas</p>
               </div>
             </div>
           </div>
@@ -233,8 +233,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
           {/* Quick Access - Compact, max 3 items */}
           {favoriteBooks.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-xs md:text-sm font-bold text-gray-700 flex items-center gap-2">
-                <ICONS.Book size={16} className="md:w-4 md:h-4" />
+              <h3 className="text-xs md:text-base lg:text-lg font-bold text-gray-700 flex items-center gap-2">
+                <ICONS.Book size={16} className="md:w-5 md:h-5" />
                 Accesos Directos
               </h3>
               <div className="grid grid-cols-3 gap-2 md:gap-3">
@@ -252,17 +252,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
                         <div className="bg-indigo-50 p-1 rounded flex-shrink-0">
                           <ICONS.Book size={12} className="md:w-4 md:h-4 text-indigo-600" />
                         </div>
-                        <span className="font-bold text-xs text-gray-800 group-hover:text-indigo-600 transition-colors line-clamp-1">
+                        <span className="font-bold text-xs md:text-sm text-gray-800 group-hover:text-indigo-600 transition-colors line-clamp-1">
                           {book.name}
                         </span>
                       </div>
                       {book.pendingTasks > 0 && (
-                        <span className="bg-rose-50 text-rose-600 text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
+                        <span className="bg-rose-50 text-rose-600 text-xs md:text-sm font-bold px-1.5 md:px-2 py-0.5 rounded-full flex-shrink-0">
                           {book.pendingTasks}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 ml-5">{book.entryCount} entr</p>
+                    <p className="text-xs md:text-sm text-gray-500 ml-5">{book.entryCount} entr</p>
                   </motion.button>
                 ))}
               </div>
@@ -276,7 +276,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
             {/* Overdue Tasks - Expandable */}
             {overdueTasks.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-xs md:text-sm font-bold text-gray-700 flex items-center gap-2">
+                <h3 className="text-xs md:text-base lg:text-lg font-bold text-gray-700 flex items-center gap-2">
                   <span className="w-1.5 h-4 bg-red-600 rounded-full"></span>
                   Atrasadas ({overdueTasks.length})
                 </h3>
@@ -293,12 +293,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
                       >
                         <div className="w-3 h-3 border-2 border-red-600 rounded mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-gray-800 line-clamp-1 mb-1">{task.description}</p>
+                          <p className="text-xs md:text-sm font-semibold text-gray-800 line-clamp-1 mb-1">{task.description}</p>
                           <div className="flex items-center gap-1">
-                            <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">
+                            <span className="px-1.5 md:px-2 py-0.5 rounded text-xs md:text-sm font-bold bg-red-100 text-red-700">
                               {task.daysOverdue === 1 ? '1d' : `${task.daysOverdue}d`}
                             </span>
-                            <span className="text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded font-medium">{task.bookName}</span>
+                            <span className="text-xs md:text-sm text-gray-600 bg-gray-100 px-1.5 md:px-2 py-0.5 rounded font-medium">{task.bookName}</span>
                           </div>
                         </div>
                       </motion.div>
@@ -310,15 +310,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
                       className="w-full text-center py-1 hover:bg-red-50/50 rounded transition-colors"
                       whileTap={{ scale: 0.98 }}
                     >
-                      <span className="text-xs text-red-600 font-medium hover:text-red-700 flex items-center justify-center gap-1">
+                      <span className="text-xs md:text-sm text-red-600 font-medium hover:text-red-700 flex items-center justify-center gap-1">
                         {expandedSections.overdue ? (
                           <>
-                            <ICONS.ChevronUp size={12} />
+                            <ICONS.ChevronUp size={12} className="md:w-4 md:h-4" />
                             Mostrar menos
                           </>
                         ) : (
                           <>
-                            <ICONS.ChevronDown size={12} />
+                            <ICONS.ChevronDown size={12} className="md:w-4 md:h-4" />
                             +{overdueTasks.length - 2} más
                           </>
                         )}
@@ -332,7 +332,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
             {/* High Priority Tasks - Expandable */}
             {highPriorityTasks.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-xs md:text-sm font-bold text-gray-700 flex items-center gap-2">
+                <h3 className="text-xs md:text-base lg:text-lg font-bold text-gray-700 flex items-center gap-2">
                   <span className="w-1.5 h-4 bg-rose-500 rounded-full"></span>
                   Prioridad Alta ({highPriorityTasks.length})
                 </h3>
@@ -349,10 +349,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
                       >
                         <div className="w-3 h-3 border-2 border-rose-500 rounded mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-gray-800 line-clamp-1 mb-1">{task.description}</p>
+                          <p className="text-xs md:text-sm font-semibold text-gray-800 line-clamp-1 mb-1">{task.description}</p>
                           <div className="flex items-center gap-1">
-                            <span className="text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded font-medium">{task.bookName}</span>
-                            {task.assignee && <span className="text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-medium">@{task.assignee}</span>}
+                            <span className="text-xs md:text-sm text-gray-600 bg-gray-100 px-1.5 md:px-2 py-0.5 rounded font-medium">{task.bookName}</span>
+                            {task.assignee && <span className="text-xs md:text-sm text-indigo-600 bg-indigo-50 px-1.5 md:px-2 py-0.5 rounded font-medium">@{task.assignee}</span>}
                           </div>
                         </div>
                       </motion.div>
@@ -364,15 +364,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
                       className="w-full text-center py-1 hover:bg-gray-50 rounded transition-colors"
                       whileTap={{ scale: 0.98 }}
                     >
-                      <span className="text-xs text-gray-600 font-medium hover:text-gray-700 flex items-center justify-center gap-1">
+                      <span className="text-xs md:text-sm text-gray-600 font-medium hover:text-gray-700 flex items-center justify-center gap-1">
                         {expandedSections.highPriority ? (
                           <>
-                            <ICONS.ChevronUp size={12} />
+                            <ICONS.ChevronUp size={12} className="md:w-4 md:h-4" />
                             Mostrar menos
                           </>
                         ) : (
                           <>
-                            <ICONS.ChevronDown size={12} />
+                            <ICONS.ChevronDown size={12} className="md:w-4 md:h-4" />
                             +{highPriorityTasks.length - 2} más
                           </>
                         )}
@@ -386,7 +386,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
             {/* Upcoming Deadlines - Expandable */}
             {upcomingDeadlines.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-xs md:text-sm font-bold text-gray-700 flex items-center gap-2">
+                <h3 className="text-xs md:text-base lg:text-lg font-bold text-gray-700 flex items-center gap-2">
                   <span className="w-1.5 h-4 bg-orange-500 rounded-full"></span>
                   Próximos ({upcomingDeadlines.length})
                 </h3>
@@ -403,16 +403,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
                       >
                         <div className="w-3 h-3 border-2 border-orange-500 rounded mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-gray-800 line-clamp-1 mb-1">{task.description}</p>
+                          <p className="text-xs md:text-sm font-semibold text-gray-800 line-clamp-1 mb-1">{task.description}</p>
                           <div className="flex items-center gap-1">
-                            <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                            <span className={`px-1.5 md:px-2 py-0.5 rounded text-xs md:text-sm font-bold ${
                               task.daysUntil === 0 ? 'bg-rose-100 text-rose-700' :
                               task.daysUntil === 1 ? 'bg-orange-100 text-orange-700' :
                               'bg-orange-50 text-orange-600'
                             }`}>
                               {task.daysUntil === 0 ? 'Hoy' : task.daysUntil === 1 ? 'Mañ' : `${task.daysUntil}d`}
                             </span>
-                            <span className="text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded font-medium">{task.bookName}</span>
+                            <span className="text-xs md:text-sm text-gray-600 bg-gray-100 px-1.5 md:px-2 py-0.5 rounded font-medium">{task.bookName}</span>
                           </div>
                         </div>
                       </motion.div>
@@ -424,15 +424,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
                       className="w-full text-center py-1 hover:bg-gray-50 rounded transition-colors"
                       whileTap={{ scale: 0.98 }}
                     >
-                      <span className="text-xs text-gray-600 font-medium hover:text-gray-700 flex items-center justify-center gap-1">
+                      <span className="text-xs md:text-sm text-gray-600 font-medium hover:text-gray-700 flex items-center justify-center gap-1">
                         {expandedSections.upcoming ? (
                           <>
-                            <ICONS.ChevronUp size={12} />
+                            <ICONS.ChevronUp size={12} className="md:w-4 md:h-4" />
                             Mostrar menos
                           </>
                         ) : (
                           <>
-                            <ICONS.ChevronDown size={12} />
+                            <ICONS.ChevronDown size={12} className="md:w-4 md:h-4" />
                             +{upcomingDeadlines.length - 2} más
                           </>
                         )}
@@ -457,9 +457,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
             <div className="bg-gray-50 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center mx-auto mb-3 md:mb-4">
               <ICONS.StickyNote className="text-gray-300 md:w-6 md:h-6" size={20} />
             </div>
-            <p className="text-gray-500 font-medium text-sm md:text-base mb-1">Tu bitácora está vacía</p>
-            <p className="text-xs md:text-sm text-gray-400">Escribe tu primera idea arriba 👆</p>
-            <p className="text-xs md:text-sm text-gray-300 mt-2 italic">¡Es hora de empezar a hacer historia! 📖✨</p>
+            <p className="text-gray-500 font-medium text-sm md:text-lg mb-1">Tu bitácora está vacía</p>
+            <p className="text-xs md:text-base text-gray-400">Escribe tu primera idea arriba 👆</p>
+            <p className="text-xs md:text-base text-gray-300 mt-2 italic">¡Es hora de empezar a hacer historia! 📖✨</p>
           </motion.div>
         </div>
       )}

@@ -51,7 +51,7 @@ const MultiTopicSummaryModal: React.FC<MultiTopicSummaryModalProps> = memo(({
   completedTasks,
   fixedBookId
 }) => {
-  const { books, threads, createThread } = useBitacora();
+  const { books, threads, entries, createThread } = useBitacora();
   const [editedTopics, setEditedTopics] = useState<TopicSummary[]>(initialTopics);
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
   const [editingBook, setEditingBook] = useState<string | null>(null);
@@ -481,15 +481,24 @@ const MultiTopicSummaryModal: React.FC<MultiTopicSummaryModalProps> = memo(({
                                     </label>
                                     
                                     {/* Existing Threads Option */}
-                                    {(threads.filter(t => t.bookId === topic.bookId).length > 0 || topic.suggestedThreadId) && (
+                                    {(threads.filter(t => {
+                                      if (t.bookId !== topic.bookId) return false;
+                                      // Only show threads that have entries, or the suggested thread
+                                      const hasEntries = entries.some(e => e.threadId === t.id);
+                                      return hasEntries || t.id === topic.suggestedThreadId;
+                                    }).length > 0 || topic.suggestedThreadId) && (
                                       <label className="flex items-center gap-2 cursor-pointer">
                                         <input
                                           type="radio"
                                           name={`thread-${topic.entryId}`}
                                           checked={threadSelections[topic.entryId]?.type === 'existing'}
                                           onChange={() => {
-                                            // Get threads from same book, plus the suggested thread if it's in a different book
-                                            const bookThreads = threads.filter(t => t.bookId === topic.bookId);
+                                            // Get threads from same book that have entries, plus the suggested thread
+                                            const bookThreads = threads.filter(t => {
+                                              if (t.bookId !== topic.bookId) return false;
+                                              const hasEntries = entries.some(e => e.threadId === t.id);
+                                              return hasEntries || t.id === topic.suggestedThreadId;
+                                            });
                                             const suggestedThread = topic.suggestedThreadId ? threads.find(t => t.id === topic.suggestedThreadId) : null;
                                             
                                             // Pre-select suggested thread if available (even if in different book)
@@ -553,8 +562,12 @@ const MultiTopicSummaryModal: React.FC<MultiTopicSummaryModalProps> = memo(({
                                         className="w-full px-2 py-1.5 rounded border border-gray-200 focus:border-indigo-500 outline-none text-xs mt-1"
                                       >
                                         <option value="">Seleccionar hilo...</option>
-                                        {/* Show threads from same book */}
-                                        {threads.filter(t => t.bookId === topic.bookId).map(thread => (
+                                        {/* Show threads from same book that have entries */}
+                                        {threads.filter(t => {
+                                          if (t.bookId !== topic.bookId) return false;
+                                          const hasEntries = entries.some(e => e.threadId === t.id);
+                                          return hasEntries || t.id === topic.suggestedThreadId;
+                                        }).map(thread => (
                                           <option 
                                             key={thread.id} 
                                             value={thread.id}

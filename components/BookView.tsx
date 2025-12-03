@@ -119,7 +119,12 @@ const BookView: React.FC<BookViewProps> = memo(({ bookId }) => {
 
   // Filter threads and unthreaded entries by search and type filter
   const filteredThreads = useMemo(() => {
-    let threads = bookThreads;
+    // First, only include threads that have at least one entry
+    let threads = bookThreads.filter(thread => {
+      const threadEntries = entriesByThread.grouped[thread.id] || [];
+      return threadEntries.length > 0;
+    });
+    
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       threads = threads.filter(thread => {

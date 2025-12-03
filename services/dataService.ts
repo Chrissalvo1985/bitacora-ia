@@ -274,6 +274,86 @@ export async function deleteEntryFromDb(entryId: string, userId: string): Promis
   }
 }
 
+// Search entries with semantic search (user-scoped)
+export async function searchEntriesSemantic(
+  userId: string,
+  query: string,
+  filters?: {
+    bookId?: string;
+    type?: NoteType;
+    dateFrom?: string;
+    dateTo?: string;
+  },
+  useSemantic: boolean = true
+): Promise<Array<{ entry: Entry; score: number }>> {
+  try {
+    const embeddingService = await import('./embeddingService');
+    
+    // Generate embedding for query
+    const queryEmbedding = await embeddingService.generateEmbedding(query);
+    
+    // Find similar entries using embeddings
+    const similarResults = await embeddingService.findSimilarEntries(
+      queryEmbedding,
+      50, // Get more results for filtering
+      0.5, // Lower threshold for search
+      userId
+    );
+    
+    // Apply filters
+    let filtered = similarResults;
+    if (filters?.bookId) {
+      filtered = filtered.filter(r => r.entry.bookId === filters.bookId);
+    }
+    if (filters?.type) {
+      filtered = filtered.filter(r => r.entry.type === filters.type);
+    }
+    if (filters?.dateFrom) {
+      const dateFrom = new Date(filters.dateFrom).getTime();
+      filtered = filtered.filter(r => r.entry.createdAt >= dateFrom);
+    }
+    if (filters?.dateTo) {
+      const dateTo = new Date(filters.dateTo).getTime();
+      filtered = filtered.filter(r => r.entry.createdAt <= dateTo);
+    }
+    
+    // Combine semantic score with text match score
+    const queryLower = query.toLowerCase();
+    const results = filtered.map(result => {
+      let textScore = 0;
+      const entry = result.entry;
+      
+      // Text matching score
+      if (entry.summary.toLowerCase().includes(queryLower)) textScore += 0.3;
+      if (entry.originalText.toLowerCase().includes(queryLower)) textScore += 0.2;
+      entry.tasks.forEach(t => {
+        if (t.description.toLowerCase().includes(queryLower)) textScore += 0.1;
+      });
+      entry.entities.forEach(e => {
+        if (e.name.toLowerCase().includes(queryLower)) textScore += 0.1;
+      });
+      
+      // Combined score: 70% semantic + 30% text
+      const combinedScore = (result.similarity * 0.7) + (Math.min(textScore, 1.0) * 0.3);
+      
+      return {
+        entry,
+        score: combinedScore,
+      };
+    });
+    
+    // Sort by combined score
+    results.sort((a, b) => b.score - a.score);
+    
+    return results;
+  } catch (error) {
+    console.error('Error in semantic search, falling back to text search:', error);
+    // Fallback to text search
+    const textResults = await searchEntriesInDb(userId, { query, ...filters });
+    return textResults.map(entry => ({ entry, score: 1.0 }));
+  }
+}
+
 // Search entries (user-scoped)
 export async function searchEntriesInDb(userId: string, filters: {
   query?: string;
@@ -446,6 +526,59 @@ export async function deleteThread(id: string, userId: string): Promise<void> {
   } catch (error) {
     console.error('Error deleting thread:', error);
     throw error;
+  }
+}
+
+// Get related entries for an entry
+export async function getRelatedEntriesForEntry(entryId: string, userId: string, limit: number = 5): Promise<Array<{ entry: Entry; relation: { strength: number } }>> {
+  try {
+    const related = await db.getRelatedEntries(entryId, limit, 0.5);
+    
+    if (related.length === 0) {
+      return [];
+    }
+    
+    // Get all related entry IDs
+    const relatedEntryIds = related.map(r => r.entry.id);
+    
+    // Load tasks and entities for related entries in batch
+    const [allTasks, allEntities] = await Promise.all([
+      db.getTasksByEntryIds(relatedEntryIds),
+      db.getEntitiesByEntryIds(relatedEntryIds),
+    ]);
+    
+    // Group tasks and entities by entry_id
+    const tasksByEntry = new Map<string, TaskItem[]>();
+    const entitiesByEntry = new Map<string, Entity[]>();
+    
+    allTasks.forEach(task => {
+      const eid = task.entry_id;
+      if (!tasksByEntry.has(eid)) {
+        tasksByEntry.set(eid, []);
+      }
+      tasksByEntry.get(eid)!.push(dbTaskToTaskItem(task));
+    });
+    
+    allEntities.forEach(entity => {
+      const eid = entity.entry_id;
+      if (!entitiesByEntry.has(eid)) {
+        entitiesByEntry.set(eid, []);
+      }
+      entitiesByEntry.get(eid)!.push(dbEntityToEntity(entity));
+    });
+    
+    // Convert to Entry format
+    return related.map(item => ({
+      entry: dbEntryToEntry(
+        item.entry,
+        tasksByEntry.get(item.entry.id) || [],
+        entitiesByEntry.get(item.entry.id) || []
+      ),
+      relation: { strength: item.relation.relation_strength },
+    }));
+  } catch (error) {
+    console.error('Error loading related entries:', error);
+    return [];
   }
 }
 

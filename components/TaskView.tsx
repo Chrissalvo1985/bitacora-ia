@@ -1,15 +1,20 @@
 import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
 import { ICONS } from '../constants';
+import { Entry } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useThrottle } from '../hooks/useThrottle';
 import ConfirmDialog from './ConfirmDialog';
+import { AuthContext } from '../context/AuthContext';
+import * as dataService from '../services/dataService';
 
 const ITEMS_PER_PAGE = 20;
 const ITEMS_PER_PAGE_MOBILE = 10;
 
 const TaskView: React.FC = memo(() => {
   const { entries, getBookName, toggleTask, updateTaskFields, deleteTask } = useBitacora();
+  const authContext = React.useContext(AuthContext);
+  const user = authContext?.user;
   const [currentPage, setCurrentPage] = useState(1);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [isLargeScreen, setIsLargeScreen] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
@@ -18,6 +23,8 @@ const TaskView: React.FC = memo(() => {
   const [editingTask, setEditingTask] = useState<{ entryId: string; taskIndex: number; field: 'assignee' | 'dueDate' } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [expandedContext, setExpandedContext] = useState<Set<string>>(new Set());
+  const [similarNotes, setSimilarNotes] = useState<Map<string, Array<{ entry: Entry; similarity: number }>>>(new Map());
   
   // Confirm dialog state for completing tasks
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -404,9 +411,101 @@ const TaskView: React.FC = memo(() => {
                           </button>
                         </div>
                         
-                        <p className="text-xs text-gray-400 line-clamp-2 italic pt-1 border-t border-gray-100">
-                          "{task.entrySummary}"
-                        </p>
+                        <div className="pt-2 border-t border-gray-100">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const contextKey = `${task.entryId}-${task.taskIndex}`;
+                              setExpandedContext(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(contextKey)) {
+                                  newSet.delete(contextKey);
+                                } else {
+                                  newSet.add(contextKey);
+                                  // Load similar notes if not loaded
+                                  if (!similarNotes.has(contextKey) && user?.id) {
+                                    const entry = entries.find(e => e.id === task.entryId);
+                                    if (entry) {
+                                      dataService.getRelatedEntriesForEntry(entry.id, user.id, 3)
+                                        .then(results => {
+                                          setSimilarNotes(prev => {
+                                            const newMap = new Map(prev);
+                                            newMap.set(contextKey, results.map(r => ({
+                                              entry: r.entry,
+                                              similarity: r.relation.strength,
+                                            })));
+                                            return newMap;
+                                          });
+                                        })
+                                        .catch(error => {
+                                          console.error('Error loading similar notes:', error);
+                                        });
+                                    }
+                                  }
+                                }
+                                return newSet;
+                              });
+                            }}
+                            className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+                          >
+                            <ICONS.ChevronRight 
+                              size={12} 
+                              className={`transition-transform ${expandedContext.has(`${task.entryId}-${task.taskIndex}`) ? 'rotate-90' : ''}`}
+                            />
+                            {expandedContext.has(`${task.entryId}-${task.taskIndex}`) ? 'Ocultar contexto' : 'Ver contexto completo'}
+                          </button>
+                          
+                          {expandedContext.has(`${task.entryId}-${task.taskIndex}`) && (() => {
+                            const entry = entries.find(e => e.id === task.entryId);
+                            if (!entry) return null;
+                            
+                            const contextKey = `${task.entryId}-${task.taskIndex}`;
+                            const similar = similarNotes.get(contextKey) || [];
+                            
+                            return (
+                              <div className="mt-3 space-y-3">
+                                <div className="bg-gray-50 rounded-lg p-3">
+                                  <p className="text-xs font-semibold text-gray-700 mb-2">Resumen:</p>
+                                  <p className="text-xs text-gray-600">{entry.summary}</p>
+                                  {entry.originalText && entry.originalText !== entry.summary && (
+                                    <>
+                                      <p className="text-xs font-semibold text-gray-700 mt-3 mb-2">Texto original:</p>
+                                      <p className="text-xs text-gray-600 whitespace-pre-wrap">{entry.originalText}</p>
+                                    </>
+                                  )}
+                                </div>
+                                
+                                {similar.length > 0 && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-gray-700 mb-2">Notas similares:</p>
+                                    <div className="space-y-2">
+                                      {similar.map(({ entry: similarEntry, similarity }) => (
+                                        <div
+                                          key={similarEntry.id}
+                                          className="bg-indigo-50 rounded-lg p-2 border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors"
+                                          onClick={() => {
+                                            const element = document.getElementById(`entry-${similarEntry.id}`);
+                                            if (element) {
+                                              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            }
+                                          }}
+                                        >
+                                          <p className="text-xs text-gray-700 line-clamp-2">{similarEntry.summary}</p>
+                                          <div className="flex items-center justify-between mt-1">
+                                            <span className="text-[10px] text-gray-500">{getBookName(similarEntry.bookId)}</span>
+                                            <span className="text-[10px] text-indigo-600 font-medium">
+                                              {Math.round(similarity * 100)}% similar
+                                            </span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
                       </div>
                     </div>
                   </motion.div>
@@ -625,23 +724,89 @@ const TaskView: React.FC = memo(() => {
                               className="overflow-hidden border-t border-gray-50"
                             >
                               <div className="px-3 md:px-5 lg:px-6 pb-3 md:pb-5 lg:pb-6 pt-3 md:pt-4 space-y-3 md:space-y-4">
-                                <div className="bg-gray-50 rounded-xl p-3 md:p-4 border border-gray-100">
-                                  <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 md:mb-2">Contexto</p>
-                                  <p className="text-sm md:text-base text-gray-700 leading-relaxed">
-                                    {task.entrySummary}
-                                  </p>
-                                </div>
-                                
-                                <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-gray-500">
-                                  <ICONS.Calendar size={14} className="md:w-4 md:h-4" />
-                                  <span>
-                                    Creada: {new Date(task.entryCreatedAt || 0).toLocaleDateString('es-ES', { 
-                                      day: 'numeric', 
-                                      month: 'long', 
-                                      year: 'numeric' 
-                                    })}
-                                  </span>
-                                </div>
+                                {(() => {
+                                  const entry = entries.find(e => e.id === task.entryId);
+                                  if (!entry) return null;
+                                  
+                                  const contextKey = `${task.entryId}-${task.taskIndex}`;
+                                  const similar = similarNotes.get(contextKey) || [];
+                                  
+                                  // Load similar notes if not loaded
+                                  if (similar.length === 0 && user?.id && !similarNotes.has(contextKey)) {
+                                    dataService.getRelatedEntriesForEntry(entry.id, user.id, 3)
+                                      .then(results => {
+                                        setSimilarNotes(prev => {
+                                          const newMap = new Map(prev);
+                                          newMap.set(contextKey, results.map(r => ({
+                                            entry: r.entry,
+                                            similarity: r.relation.strength,
+                                          })));
+                                          return newMap;
+                                        });
+                                      })
+                                      .catch(error => {
+                                        console.error('Error loading similar notes:', error);
+                                      });
+                                  }
+                                  
+                                  return (
+                                    <>
+                                      <div className="bg-gray-50 rounded-xl p-3 md:p-4 border border-gray-100">
+                                        <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 md:mb-2">Resumen</p>
+                                        <p className="text-sm md:text-base text-gray-700 leading-relaxed">
+                                          {entry.summary}
+                                        </p>
+                                        {entry.originalText && entry.originalText !== entry.summary && (
+                                          <>
+                                            <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide mt-3 mb-1.5 md:mb-2">Texto original</p>
+                                            <p className="text-sm md:text-base text-gray-600 leading-relaxed whitespace-pre-wrap">
+                                              {entry.originalText}
+                                            </p>
+                                          </>
+                                        )}
+                                      </div>
+                                      
+                                      {similar.length > 0 && (
+                                        <div className="bg-indigo-50 rounded-xl p-3 md:p-4 border border-indigo-100">
+                                          <p className="text-[10px] md:text-xs font-bold text-indigo-700 uppercase tracking-wide mb-2">Notas similares</p>
+                                          <div className="space-y-2">
+                                            {similar.map(({ entry: similarEntry, similarity }) => (
+                                              <div
+                                                key={similarEntry.id}
+                                                className="bg-white rounded-lg p-2 border border-indigo-200 cursor-pointer hover:bg-indigo-100 transition-colors"
+                                                onClick={() => {
+                                                  const element = document.getElementById(`entry-${similarEntry.id}`);
+                                                  if (element) {
+                                                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                  }
+                                                }}
+                                              >
+                                                <p className="text-xs md:text-sm text-gray-700 line-clamp-2">{similarEntry.summary}</p>
+                                                <div className="flex items-center justify-between mt-1">
+                                                  <span className="text-[10px] text-gray-500">{getBookName(similarEntry.bookId)}</span>
+                                                  <span className="text-[10px] text-indigo-600 font-medium">
+                                                    {Math.round(similarity * 100)}% similar
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-gray-500">
+                                        <ICONS.Calendar size={14} className="md:w-4 md:h-4" />
+                                        <span>
+                                          Creada: {new Date(task.entryCreatedAt || 0).toLocaleDateString('es-ES', { 
+                                            day: 'numeric', 
+                                            month: 'long', 
+                                            year: 'numeric' 
+                                          })}
+                                        </span>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </motion.div>
                           )}

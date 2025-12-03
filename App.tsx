@@ -16,6 +16,8 @@ const SearchView = lazy(() => import('./components/SearchView'));
 const SummaryView = lazy(() => import('./components/SummaryView'));
 const AIQueryView = lazy(() => import('./components/AIQueryView'));
 const UserProfileView = lazy(() => import('./components/UserProfileView'));
+const PeopleView = lazy(() => import('./components/PeopleView'));
+const InsightsView = lazy(() => import('./components/InsightsView'));
 
 // Loading fallback component
 const LoadingFallback = () => (
@@ -26,72 +28,137 @@ const LoadingFallback = () => (
 
 // Bottom Navigation Component for Mobile
 const BottomNav = ({ activeView, setActiveView, onSearchClick, onSummaryClick, onQueryClick }: any) => {
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-200 px-2 py-2 flex justify-around items-center z-50 pb-[max(12px,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-        <button 
-            onClick={() => setActiveView('dashboard')}
-            className={`flex flex-col items-center gap-1 transition-colors p-2 flex-1 ${activeView === 'dashboard' ? 'text-indigo-600' : 'text-gray-400'}`}
-        >
-            <ICONS.Home size={22} strokeWidth={activeView === 'dashboard' ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Inicio</span>
-        </button>
-        
-        <button 
-             onClick={() => setActiveView('tasks')}
-            className={`flex flex-col items-center gap-1 transition-colors p-2 flex-1 ${activeView === 'tasks' ? 'text-indigo-600' : 'text-gray-400'}`}
-        >
-            <ICONS.ListTodo size={22} strokeWidth={activeView === 'tasks' ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Misiones</span>
-        </button>
+    <>
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-200 px-2 py-2 flex justify-around items-center z-50 pb-[max(12px,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+          <button 
+              onClick={() => setActiveView('dashboard')}
+              className={`flex flex-col items-center gap-1 transition-colors p-2 flex-1 ${activeView === 'dashboard' ? 'text-indigo-600' : 'text-gray-400'}`}
+          >
+              <ICONS.Home size={22} strokeWidth={activeView === 'dashboard' ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">Inicio</span>
+          </button>
+          
+          <button 
+               onClick={() => setActiveView('tasks')}
+              className={`flex flex-col items-center gap-1 transition-colors p-2 flex-1 ${activeView === 'tasks' ? 'text-indigo-600' : 'text-gray-400'}`}
+          >
+              <ICONS.ListTodo size={22} strokeWidth={activeView === 'tasks' ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">Misiones</span>
+          </button>
 
-        <button 
-             onClick={onSearchClick}
-            className={`flex flex-col items-center gap-1 transition-colors p-2 flex-1 ${activeView === 'search' ? 'text-indigo-600' : 'text-gray-400'}`}
-        >
-            <ICONS.Search size={22} strokeWidth={activeView === 'search' ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Buscar</span>
-        </button>
+          <button 
+               onClick={onSearchClick}
+              className={`flex flex-col items-center gap-1 transition-colors p-2 flex-1 ${activeView === 'search' ? 'text-indigo-600' : 'text-gray-400'}`}
+          >
+              <ICONS.Search size={22} strokeWidth={activeView === 'search' ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">Buscar</span>
+          </button>
 
-        <button 
-             onClick={onSummaryClick}
-            className={`flex flex-col items-center gap-1 transition-colors p-2 flex-1 ${activeView === 'summary' ? 'text-indigo-600' : 'text-gray-400'}`}
-        >
-            <ICONS.Sparkles size={22} strokeWidth={activeView === 'summary' ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Resumen</span>
-        </button>
+          <button 
+               onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className={`flex flex-col items-center gap-1 transition-colors p-2 flex-1 ${showMoreMenu ? 'text-indigo-600' : 'text-gray-400'}`}
+          >
+              <ICONS.Menu size={22} strokeWidth={showMoreMenu ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">Más</span>
+          </button>
+      </div>
 
-        <button 
-             onClick={onQueryClick}
-            className={`flex flex-col items-center gap-1 transition-colors p-2 flex-1 ${activeView === 'query' ? 'text-indigo-600' : 'text-gray-400'}`}
-        >
-            <ICONS.Sparkles size={22} strokeWidth={activeView === 'query' ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">IA</span>
-        </button>
-    </div>
+      {/* More Menu Drawer */}
+      <AnimatePresence>
+        {showMoreMenu && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMoreMenu(false)}
+              className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="md:hidden fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 pb-[max(24px,env(safe-area-inset-bottom))] max-h-[70vh] overflow-y-auto"
+            >
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">Más opciones</h3>
+                <button
+                  onClick={() => setShowMoreMenu(false)}
+                  className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+                >
+                  <ICONS.X size={20} className="text-gray-500" />
+                </button>
+              </div>
+              <div className="px-4 py-4 space-y-2">
+                <button
+                  onClick={() => {
+                    setActiveView('summary');
+                    setShowMoreMenu(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                    activeView === 'summary' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <ICONS.Sparkles size={20} />
+                  <span className="font-medium">Resumen</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveView('query');
+                    setShowMoreMenu(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                    activeView === 'query' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <ICONS.Sparkles size={20} />
+                  <span className="font-medium">Preguntar IA</span>
+                </button>
+                <div className="border-t border-gray-100 my-2" />
+                <button
+                  onClick={() => {
+                    setActiveView('people');
+                    setShowMoreMenu(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                    activeView === 'people' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <ICONS.Users size={20} />
+                  <span className="font-medium">Personas</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveView('insights');
+                    setShowMoreMenu(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                    activeView === 'insights' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <ICONS.BarChart3 size={20} />
+                  <span className="font-medium">Insights</span>
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
   );
 };
 
-const Layout = () => {
-  const { isAuthenticated, isLoading: authLoading, user, logout } = useAuth();
+// Authenticated Layout - only renders when user is authenticated
+const AuthenticatedLayout = () => {
+  const { user } = useAuth();
   const { books } = useBitacora();
   const [activeView, setActiveView] = useState('dashboard');
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [isBooksMenuOpen, setIsBooksMenuOpen] = useState(false);
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-        <div className="text-center">
-          <ICONS.Loader2 className="animate-spin mx-auto text-indigo-600 mb-4" size={48} />
-          <p className="text-gray-600 font-medium">Cargando...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <LoginView />;
-  }
 
   const handleSelectBook = (bookId: string) => {
     setSelectedBookId(bookId);
@@ -143,6 +210,16 @@ const Layout = () => {
       profile: (
         <Suspense fallback={<LoadingFallback />}>
           <UserProfileView />
+        </Suspense>
+      ),
+      people: (
+        <Suspense fallback={<LoadingFallback />}>
+          <PeopleView />
+        </Suspense>
+      ),
+      insights: (
+        <Suspense fallback={<LoadingFallback />}>
+          <InsightsView />
         </Suspense>
       ),
     };
@@ -240,6 +317,28 @@ const Layout = () => {
       </main>
     </div>
   );
+};
+
+// Main Layout component - handles authentication state
+const Layout = () => {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+        <div className="text-center">
+          <ICONS.Loader2 className="animate-spin mx-auto text-indigo-600 mb-4" size={48} />
+          <p className="text-gray-600 font-medium">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginView />;
+  }
+
+  return <AuthenticatedLayout />;
 };
 
 const App = () => {

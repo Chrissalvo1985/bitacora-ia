@@ -63,6 +63,7 @@ export interface Entry {
   entities: Entity[]; // People, companies identified
   threadId?: string; // Thread this entry belongs to
   aiRewrittenText?: string; // Text rewritten by AI in a more organized way
+  relatedEntries?: EntryRelation[]; // Related entries with semantic similarity
   
   // Note: Attachments are NOT stored - they're only used as context for AI analysis
 
@@ -137,4 +138,20 @@ export interface MultiTopicAnalysis {
   topics: TopicEntry[];
   overallContext: string; // Overall context/description of the note
   suggestedPriority: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+export interface EntryRelation {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  strength: number; // 0.0-1.0
+  createdAt: number;
+}
+
+export interface Embedding {
+  id: string;
+  entryId: string;
+  embedding: number[];
+  model: string;
+  createdAt: number;
 }

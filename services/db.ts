@@ -99,6 +99,22 @@ export interface DbEntity {
   created_at: string;
 }
 
+export interface DbEmbedding {
+  id: string;
+  entry_id: string;
+  embedding: string; // JSON array as string
+  model: string;
+  created_at: string;
+}
+
+export interface DbEntryRelation {
+  id: string;
+  source_id: string;
+  target_id: string;
+  relation_strength: number;
+  created_at: string;
+}
+
 // Initialize database schema
 export async function initDatabase() {
   if (!sql) {
@@ -203,6 +219,44 @@ export async function initDatabase() {
       )
     `;
 
+    // Create entry_embeddings table
+    await db`
+      CREATE TABLE IF NOT EXISTS entry_embeddings (
+        id TEXT PRIMARY KEY,
+        entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+        embedding TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT 'text-embedding-3-small',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
+    // Create entry_relations table (graph-lite)
+    await db`
+      CREATE TABLE IF NOT EXISTS entry_relations (
+        id TEXT PRIMARY KEY,
+        source_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+        target_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+        relation_strength REAL NOT NULL CHECK (relation_strength >= 0.0 AND relation_strength <= 1.0),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(source_id, target_id)
+      )
+    `;
+
+    // Create person_summaries table (cache for AI-generated person interaction summaries)
+    await db`
+      CREATE TABLE IF NOT EXISTS person_summaries (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        person_name TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        entries_hash TEXT NOT NULL,
+        last_entry_timestamp BIGINT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, person_name)
+      )
+    `;
+
     // Add thread_id column to entries table if it doesn't exist (migration)
     try {
       const threadIdColumnExists = await db`
@@ -283,6 +337,9 @@ export async function initDatabase() {
     } catch (e) {
       console.warn('Could not create threads book_id index (may already exist):', e);
     }
+    await db`CREATE INDEX IF NOT EXISTS idx_entry_embeddings_entry_id ON entry_embeddings(entry_id)`;
+    await db`CREATE INDEX IF NOT EXISTS idx_entry_relations_source_id ON entry_relations(source_id)`;
+    await db`CREATE INDEX IF NOT EXISTS idx_entry_relations_target_id ON entry_relations(target_id)`;
 
     // Note: Default inbox book will be created per user when they first use the app
 
@@ -805,6 +862,162 @@ export async function searchEntries(query: string, filters?: { userId?: string; 
       ORDER BY e.created_at DESC
     ` as DbEntry[];
   }
+}
+
+// Embeddings operations
+export async function createEntryEmbedding(
+  id: string,
+  entryId: string,
+  embedding: number[],
+  model: string = 'text-embedding-3-small'
+): Promise<DbEmbedding> {
+  const db = requireDb();
+  const embeddingJson = JSON.stringify(embedding);
+  await db`
+    INSERT INTO entry_embeddings (id, entry_id, embedding, model)
+    VALUES (${id}, ${entryId}, ${embeddingJson}, ${model})
+  `;
+  const result = await db`SELECT * FROM entry_embeddings WHERE id = ${id} LIMIT 1` as DbEmbedding[];
+  return result[0];
+}
+
+export async function getEmbeddingByEntryId(entryId: string): Promise<DbEmbedding | null> {
+  const db = requireDb();
+  const result = await db`SELECT * FROM entry_embeddings WHERE entry_id = ${entryId} LIMIT 1` as DbEmbedding[];
+  return result[0] || null;
+}
+
+export async function getEmbeddingsByEntryIds(entryIds: string[]): Promise<DbEmbedding[]> {
+  if (entryIds.length === 0) return [];
+  const db = requireDb();
+  const result = await db`SELECT * FROM entry_embeddings WHERE entry_id = ANY(${entryIds})` as DbEmbedding[];
+  return result;
+}
+
+export async function deleteEmbeddingByEntryId(entryId: string): Promise<void> {
+  const db = requireDb();
+  await db`DELETE FROM entry_embeddings WHERE entry_id = ${entryId}`;
+}
+
+// Entry Relations operations
+export async function createEntryRelation(
+  id: string,
+  sourceId: string,
+  targetId: string,
+  relationStrength: number
+): Promise<DbEntryRelation> {
+  const db = requireDb();
+  // Use ON CONFLICT to update if relation already exists
+  await db`
+    INSERT INTO entry_relations (id, source_id, target_id, relation_strength)
+    VALUES (${id}, ${sourceId}, ${targetId}, ${relationStrength})
+    ON CONFLICT (source_id, target_id) 
+    DO UPDATE SET relation_strength = ${relationStrength}, created_at = CURRENT_TIMESTAMP
+  `;
+  const result = await db`SELECT * FROM entry_relations WHERE id = ${id} LIMIT 1` as DbEntryRelation[];
+  return result[0];
+}
+
+export async function getRelationsByEntryId(entryId: string): Promise<DbEntryRelation[]> {
+  const db = requireDb();
+  const result = await db`
+    SELECT * FROM entry_relations 
+    WHERE source_id = ${entryId} OR target_id = ${entryId}
+    ORDER BY relation_strength DESC
+  ` as DbEntryRelation[];
+  return result;
+}
+
+export async function getRelatedEntries(entryId: string, limit: number = 10, minStrength: number = 0.5): Promise<Array<{entry: DbEntry, relation: DbEntryRelation}>> {
+  const db = requireDb();
+  const relations = await db`
+    SELECT * FROM entry_relations 
+    WHERE (source_id = ${entryId} OR target_id = ${entryId})
+      AND relation_strength >= ${minStrength}
+    ORDER BY relation_strength DESC
+    LIMIT ${limit}
+  ` as DbEntryRelation[];
+  
+  if (relations.length === 0) return [];
+  
+  // Get the related entry IDs
+  const relatedEntryIds = relations.map(r => 
+    r.source_id === entryId ? r.target_id : r.source_id
+  );
+  
+  // Fetch the entries
+  const entries = await db`
+    SELECT * FROM entries WHERE id = ANY(${relatedEntryIds})
+  ` as DbEntry[];
+  
+  // Map relations to entries
+  const entryMap = new Map(entries.map(e => [e.id, e]));
+  return relations
+    .map(relation => {
+      const relatedEntryId = relation.source_id === entryId ? relation.target_id : relation.source_id;
+      const entry = entryMap.get(relatedEntryId);
+      if (!entry) return null;
+      return { entry, relation };
+    })
+    .filter((item): item is {entry: DbEntry, relation: DbEntryRelation} => item !== null);
+}
+
+export async function deleteRelation(id: string): Promise<void> {
+  const db = requireDb();
+  await db`DELETE FROM entry_relations WHERE id = ${id}`;
+}
+
+// Person summaries cache functions
+export interface DbPersonSummary {
+  id: string;
+  user_id: string;
+  person_name: string;
+  summary: string;
+  entries_hash: string;
+  last_entry_timestamp: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getPersonSummary(userId: string, personName: string): Promise<DbPersonSummary | null> {
+  const db = requireDb();
+  const results = await db<DbPersonSummary[]>`
+    SELECT * FROM person_summaries 
+    WHERE user_id = ${userId} AND person_name = ${personName}
+    LIMIT 1
+  `;
+  return results[0] || null;
+}
+
+export async function savePersonSummary(
+  userId: string,
+  personName: string,
+  summary: string,
+  entriesHash: string,
+  lastEntryTimestamp: number
+): Promise<void> {
+  const db = requireDb();
+  const id = `${userId}_${personName}_${Date.now()}`;
+  
+  await db`
+    INSERT INTO person_summaries (id, user_id, person_name, summary, entries_hash, last_entry_timestamp, updated_at)
+    VALUES (${id}, ${userId}, ${personName}, ${summary}, ${entriesHash}, ${lastEntryTimestamp}, CURRENT_TIMESTAMP)
+    ON CONFLICT (user_id, person_name) 
+    DO UPDATE SET 
+      summary = ${summary},
+      entries_hash = ${entriesHash},
+      last_entry_timestamp = ${lastEntryTimestamp},
+      updated_at = CURRENT_TIMESTAMP
+  `;
+}
+
+export async function updateRelationStrength(id: string, strength: number): Promise<void> {
+  const db = requireDb();
+  await db`
+    UPDATE entry_relations 
+    SET relation_strength = ${strength}
+    WHERE id = ${id}
+  `;
 }
 
 export default sql;
