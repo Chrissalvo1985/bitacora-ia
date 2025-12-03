@@ -12,7 +12,9 @@ const TaskView: React.FC = memo(() => {
   const { entries, getBookName, toggleTask, updateTaskFields, deleteTask } = useBitacora();
   const [currentPage, setCurrentPage] = useState(1);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
-  const [sortBy, setSortBy] = useState<'date' | 'priority' | 'book'>('date');
+  const [isLargeScreen, setIsLargeScreen] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [sortBy, setSortBy] = useState<'date' | 'priority' | 'book' | 'assignee' | 'dueDate'>('date');
   const [editingTask, setEditingTask] = useState<{ entryId: string; taskIndex: number; field: 'assignee' | 'dueDate' } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
@@ -80,6 +82,7 @@ const TaskView: React.FC = memo(() => {
   // Throttled resize handler for better performance
   const checkSize = useThrottle(() => {
     setIsMobile(window.innerWidth < 768);
+    setIsLargeScreen(window.innerWidth >= 1024);
   }, 150);
 
   useEffect(() => {
@@ -110,6 +113,20 @@ const TaskView: React.FC = memo(() => {
       if (sortBy === 'book') {
         return a.bookName.localeCompare(b.bookName);
       }
+      if (sortBy === 'assignee') {
+        const aAssignee = a.assignee || 'zzz';
+        const bAssignee = b.assignee || 'zzz';
+        return aAssignee.localeCompare(bAssignee);
+      }
+      if (sortBy === 'dueDate') {
+        const aDate = a.dueDate ? (a.dueDate instanceof Date ? a.dueDate.getTime() : new Date(a.dueDate).getTime()) : 0;
+        const bDate = b.dueDate ? (b.dueDate instanceof Date ? b.dueDate.getTime() : new Date(b.dueDate).getTime()) : 0;
+        if (aDate === 0 && bDate === 0) return 0;
+        if (aDate === 0) return 1; // No date goes to end
+        if (bDate === 0) return -1;
+        return aDate - bDate; // Earliest first
+      }
+      // Default: date (newest first)
       return (b.entryCreatedAt || 0) - (a.entryCreatedAt || 0);
     });
   }, [entries, getBookName, sortBy]);
@@ -201,23 +218,49 @@ const TaskView: React.FC = memo(() => {
               </h2>
               <p className="text-sm md:text-base text-gray-500 mt-1 md:mt-2 ml-1">Todo lo que tienes pendiente para conquistar el mundo. 🚀💪</p>
             </div>
-            {allTasks.length > 5 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 font-medium hidden sm:inline">Ordenar:</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => {
-                    setSortBy(e.target.value as 'date' | 'priority' | 'book');
-                    setCurrentPage(1);
-                  }}
-                  className="px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-gray-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none text-xs md:text-sm bg-white"
-                >
-                  <option value="date">Más recientes</option>
-                  <option value="priority">Prioridad</option>
-                  <option value="book">Por libreta</option>
-                </select>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {allTasks.length > 5 && (
+                <>
+                  <span className="text-xs text-gray-500 font-medium hidden sm:inline">Ordenar:</span>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => {
+                      setSortBy(e.target.value as 'date' | 'priority' | 'book' | 'assignee' | 'dueDate');
+                      setCurrentPage(1);
+                    }}
+                    className="px-2 md:px-3 py-1 md:py-1.5 rounded-lg border border-gray-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none text-xs md:text-sm bg-white"
+                  >
+                    <option value="date">Más recientes</option>
+                    <option value="priority">Prioridad</option>
+                    <option value="book">Por libreta</option>
+                    <option value="assignee">Por responsable</option>
+                    <option value="dueDate">Por fecha límite</option>
+                  </select>
+                </>
+              )}
+              {allTasks.length > 5 && isLargeScreen && (
+                <div className="hidden md:flex items-center gap-2 bg-white rounded-xl border border-gray-200 p-1 ml-2">
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                      viewMode === 'list' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    title="Vista lista"
+                  >
+                    <ICONS.List size={16} />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                      viewMode === 'grid' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    title="Vista cuadrícula"
+                  >
+                    <ICONS.Grid3x3 size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           
           {allTasks.length > 0 && (
@@ -248,8 +291,131 @@ const TaskView: React.FC = memo(() => {
         </div>
       ) : (
         <>
-          <div className="space-y-3 md:space-y-4">
-            {paginatedTasks.map((task, i) => {
+          {viewMode === 'grid' && isLargeScreen ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+              {paginatedTasks.map((task, i) => {
+                const taskKey = `${task.entryId}-${task.taskIndex}`;
+                return (
+                  <motion.div
+                    key={taskKey}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, delay: i * 0.02 }}
+                    className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-indigo-200 transition-all duration-200 overflow-hidden"
+                  >
+                    <div className="p-4 md:p-5">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            showCompleteConfirm(task.entryId, task.taskIndex, task.description);
+                          }}
+                          className="mt-0.5 text-gray-300 hover:text-indigo-500 transition-all hover:scale-110 flex-shrink-0"
+                          title="Marcar como completada"
+                        >
+                          <div className="w-5 h-5 border-2 border-current rounded-lg" />
+                        </button>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {task.priority === 'HIGH' && (
+                            <span className="text-[10px] uppercase font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                              Alta
+                            </span>
+                          )}
+                          {task.priority === 'MEDIUM' && (
+                            <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                              Media
+                            </span>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              showDeleteConfirm(task.entryId, task.taskIndex, task.description);
+                            }}
+                            className="p-1 hover:bg-rose-50 rounded-lg transition-colors text-gray-300 hover:text-rose-500"
+                            title="Eliminar"
+                          >
+                            <ICONS.Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <p className="text-base font-semibold text-gray-800 leading-relaxed mb-3 line-clamp-3">
+                        {task.description}
+                      </p>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded-lg">
+                          <ICONS.Book size={12} />
+                          <span className="truncate">{task.bookName}</span>
+                        </div>
+                        
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartEdit(task.entryId, task.taskIndex, 'assignee', task.assignee);
+                            }}
+                            className="flex items-center gap-1 text-xs font-semibold bg-indigo-50 text-indigo-600 px-2 py-1 rounded-lg border border-indigo-100 hover:bg-indigo-100 transition-colors"
+                          >
+                            <span>@</span>
+                            {task.assignee || 'Asignar'}
+                          </button>
+                          
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              let currentDate = '';
+                              if (task.dueDate) {
+                                if (task.dueDate instanceof Date) {
+                                  currentDate = task.dueDate.toISOString().split('T')[0];
+                                } else if (typeof task.dueDate === 'string') {
+                                  try {
+                                    const date = new Date(task.dueDate);
+                                    if (!isNaN(date.getTime())) {
+                                      currentDate = date.toISOString().split('T')[0];
+                                    } else {
+                                      currentDate = task.dueDate;
+                                    }
+                                  } catch {
+                                    currentDate = task.dueDate;
+                                  }
+                                }
+                              }
+                              handleStartEdit(task.entryId, task.taskIndex, 'dueDate', currentDate);
+                            }}
+                            className="flex items-center gap-1 text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100 hover:bg-orange-100 transition-colors"
+                          >
+                            📅 {task.dueDate 
+                              ? (task.dueDate instanceof Date 
+                                  ? task.dueDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+                                  : typeof task.dueDate === 'string'
+                                    ? (() => {
+                                        try {
+                                          const date = new Date(task.dueDate);
+                                          return !isNaN(date.getTime()) 
+                                            ? date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+                                            : task.dueDate;
+                                        } catch {
+                                          return task.dueDate;
+                                        }
+                                      })()
+                                    : task.dueDate)
+                              : 'Sin fecha'}
+                          </button>
+                        </div>
+                        
+                        <p className="text-xs text-gray-400 line-clamp-2 italic pt-1 border-t border-gray-100">
+                          "{task.entrySummary}"
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-3 md:space-y-4">
+              {paginatedTasks.map((task, i) => {
               // Group by priority for visual separation
               const prevTask = i > 0 ? paginatedTasks[i - 1] : null;
               const showPriorityHeader = sortBy === 'priority' && prevTask && prevTask.priority !== task.priority;
@@ -487,6 +653,7 @@ const TaskView: React.FC = memo(() => {
               );
             })}
           </div>
+          )}
           
           {/* Pagination */}
           {totalPages > 1 && (

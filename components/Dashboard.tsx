@@ -1,10 +1,10 @@
-import React, { useMemo, useCallback, memo } from 'react';
+import React, { useMemo, useCallback, memo, useState } from 'react';
 import { useBitacora } from '../context/BitacoraContext';
 import { useAuth } from '../context/AuthContext';
 import EntryCard from './EntryCard';
 import { ICONS } from '../constants';
 import CaptureInput from './CaptureInput';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface DashboardProps {
   onSelectBook?: (bookId: string) => void;
@@ -14,6 +14,25 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }) => {
   const { entries, books } = useBitacora();
   const { user } = useAuth();
+
+  // Estado para controlar expansión de secciones
+  const [expandedSections, setExpandedSections] = useState<{
+    overdue: boolean;
+    highPriority: boolean;
+    upcoming: boolean;
+  }>({
+    overdue: false,
+    highPriority: false,
+    upcoming: false,
+  });
+
+  // Función para toggle expansión
+  const toggleSection = useCallback((section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  }, []);
 
   // Memoized stats
   const stats = useMemo(() => {
@@ -85,6 +104,32 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
       .sort((a, b) => (a.daysUntil || 0) - (b.daysUntil || 0));
   }, [entries, books]);
 
+  // Overdue tasks - memoized
+  const overdueTasks = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return entries
+      .flatMap(e => e.tasks
+        .filter(t => {
+          if (t.isDone || !t.dueDate) return false;
+          const dueDate = new Date(t.dueDate);
+          dueDate.setHours(0, 0, 0, 0);
+          const daysDiff = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          return daysDiff < 0; // Past due date
+        })
+        .map(t => ({ 
+          ...t, 
+          entryId: e.id, 
+          bookId: e.bookId,
+          bookName: books.find(b => b.id === e.bookId)?.name || 'Desconocido', 
+          daysOverdue: Math.abs(Math.ceil((new Date(t.dueDate!).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))),
+          entrySummary: e.summary
+        }))
+      )
+      .sort((a, b) => (b.daysOverdue || 0) - (a.daysOverdue || 0)); // Most overdue first
+  }, [entries, books]);
+
   // Dynamic greeting with personality based on gender
   const hour = new Date().getHours();
   const isFemale = user?.gender === 'female';
@@ -141,201 +186,280 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectBook, onNavigateToEntry }
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto flex flex-col px-0 md:px-6 lg:px-8">
-      
-      {/* Header - Compact */}
-      <div className="flex-shrink-0 pt-3 pb-2">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 via-indigo-800 to-gray-900 tracking-tight">
-              {greeting}
-            </h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              <span className="font-semibold text-indigo-600">{openTasks} misiones</span> • <span className="font-semibold text-gray-700">{books.length} libretas</span>
-            </p>
-          </div>
+    <div className="w-full flex flex-col overflow-hidden">
+      {/* Header - Ultra compact */}
+      <div className="flex-shrink-0 pt-3 md:pt-4 pb-3 md:pb-4">
+        <div className="mb-3 md:mb-4">
+          <h1 className="text-xl md:text-2xl lg:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 via-indigo-800 to-gray-900 tracking-tight mb-1 leading-tight">
+            {greeting}
+          </h1>
+          <p className="text-xs md:text-sm text-gray-500">
+            <span className="font-semibold text-indigo-600">{openTasks} misiones</span> • <span className="font-semibold text-gray-700">{books.length} libretas</span>
+          </p>
         </div>
-        <div className="mt-2">
+        <div className="w-full">
           <CaptureInput />
         </div>
       </div>
 
-      {/* Main Content - Optimized Layout */}
-      <div className="flex-1 flex flex-col gap-3 min-h-0">
-        
-        {/* Stats Block - Horizontal Compact */}
-        <div className="flex-shrink-0 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-3 md:p-4 border border-indigo-100 shadow-sm">
-          <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-            <ICONS.BarChart3 size={16} />
-            Resumen
-          </h3>
-          <div className="grid grid-cols-3 gap-2 md:gap-3">
-            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow-md transition-shadow">
-              <p className="text-xl md:text-2xl font-bold text-gray-800">{totalEntries}</p>
-              <p className="text-xs text-gray-500 font-medium">Entradas 📝</p>
-            </div>
-            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow-md transition-shadow">
-              <p className="text-xl md:text-2xl font-bold text-indigo-600">{openTasks}</p>
-              <p className="text-xs text-gray-500 font-medium">Pendientes ⏳</p>
-            </div>
-            <div className="bg-white/90 rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow-md transition-shadow">
-              <p className="text-xl md:text-2xl font-bold text-emerald-600">{completedTasks}</p>
-              <p className="text-xs text-gray-500 font-medium">Completadas ✅</p>
+      {/* Main Content - Ultra compact */}
+      <div className="flex-1 flex flex-col gap-4 md:gap-5 overflow-hidden">
+
+        {/* Top Section - Stats & Quick Access */}
+        <div className="flex-shrink-0 space-y-4 md:space-y-5">
+
+          {/* Stats Cards - Compact */}
+          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg md:rounded-xl p-3 md:p-4 border border-indigo-100 shadow-sm">
+            <h3 className="text-xs md:text-sm font-bold text-gray-700 mb-3 md:mb-4 flex items-center gap-2">
+              <ICONS.BarChart3 size={16} className="md:w-4 md:h-4" />
+              Resumen
+            </h3>
+            <div className="grid grid-cols-3 gap-2 md:gap-3">
+              <div className="bg-white rounded-md md:rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow transition-shadow">
+                <p className="text-lg md:text-xl lg:text-2xl font-bold text-gray-800 mb-0.5">{totalEntries}</p>
+                <p className="text-xs text-gray-500 font-medium">Entradas</p>
+              </div>
+              <div className="bg-white rounded-md md:rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow transition-shadow">
+                <p className="text-lg md:text-xl lg:text-2xl font-bold text-indigo-600 mb-0.5">{openTasks}</p>
+                <p className="text-xs text-gray-500 font-medium">Pendientes</p>
+              </div>
+              <div className="bg-white rounded-md md:rounded-lg p-2 md:p-3 text-center shadow-sm hover:shadow transition-shadow">
+                <p className="text-lg md:text-xl lg:text-2xl font-bold text-emerald-600 mb-0.5">{completedTasks}</p>
+                <p className="text-xs text-gray-500 font-medium">Completadas</p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Favorite Books Block - Horizontal Compact */}
-        {favoriteBooks.length > 0 && (
-          <div className="flex-shrink-0">
-            <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-              <ICONS.Book size={16} />
-              Accesos Directos
-            </h3>
-            <div className="flex gap-2 md:gap-3 overflow-x-auto pb-1 custom-scrollbar">
-              {favoriteBooks.map((book, idx) => {
-                const bookEntries = entries.filter(e => e.bookId === book.id);
-                const lastEntry = bookEntries.sort((a, b) => b.createdAt - a.createdAt)[0];
-                
-                return (
+          {/* Quick Access - Compact, max 3 items */}
+          {favoriteBooks.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs md:text-sm font-bold text-gray-700 flex items-center gap-2">
+                <ICONS.Book size={16} className="md:w-4 md:h-4" />
+                Accesos Directos
+              </h3>
+              <div className="grid grid-cols-3 gap-2 md:gap-3">
+                {favoriteBooks.slice(0, 3).map((book, idx) => (
                   <motion.button
                     key={book.id}
-                    initial={{ opacity: 0, y: -10 }}
+                    initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
+                    transition={{ delay: idx * 0.03 }}
                     onClick={() => onSelectBook?.(book.id)}
-                    className="flex-shrink-0 w-40 md:w-48 bg-white rounded-lg shadow-sm border border-gray-100 hover:shadow-md hover:border-indigo-300 transition-all p-2.5 md:p-3 text-left group"
+                    className="bg-white rounded-md md:rounded-lg shadow-sm border border-gray-200 hover:shadow hover:border-indigo-300 transition-all p-2 md:p-3 text-left group"
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <div className="bg-indigo-50 p-1.5 rounded-lg">
-                          <ICONS.Book size={16} className="text-indigo-600" />
+                      <div className="flex items-center gap-1.5 md:gap-2 min-w-0 flex-1">
+                        <div className="bg-indigo-50 p-1 rounded flex-shrink-0">
+                          <ICONS.Book size={12} className="md:w-4 md:h-4 text-indigo-600" />
                         </div>
-                        <span className="font-semibold text-sm text-gray-800 group-hover:text-indigo-600 transition-colors line-clamp-1">
+                        <span className="font-bold text-xs text-gray-800 group-hover:text-indigo-600 transition-colors line-clamp-1">
                           {book.name}
                         </span>
                       </div>
                       {book.pendingTasks > 0 && (
-                        <span className="bg-rose-50 text-rose-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        <span className="bg-rose-50 text-rose-600 text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
                           {book.pendingTasks}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 ml-9">{book.entryCount} entradas</p>
+                    <p className="text-xs text-gray-500 ml-5">{book.entryCount} entr</p>
                   </motion.button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Tasks Section - Compact with max height */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 pb-4">
-          {/* High Priority Tasks */}
-          {highPriorityTasks.length > 0 && (
-            <div className="flex flex-col">
-              <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2 flex-shrink-0">
-                <span className="w-1.5 h-4 bg-rose-500 rounded-full"></span>
-                Prioridad Alta
-              </h3>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 max-h-[300px] md:max-h-[400px] overflow-y-auto">
-                <div>
-                  {highPriorityTasks.slice(0, 8).map((task, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="p-3 hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className="w-4 h-4 border-2 border-rose-500 rounded-lg mt-0.5 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-800 mb-1.5 line-clamp-1">{task.description}</p>
-                          <div className="flex flex-wrap gap-1.5 text-xs items-center">
-                            <span className="text-gray-600 bg-gray-100 px-2 py-0.5 rounded font-medium">{task.bookName}</span>
-                            {task.assignee && <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-medium">@{task.assignee}</span>}
-                            {onNavigateToEntry && (
-                              <button
-                                onClick={() => onNavigateToEntry(task.bookId, task.entryId)}
-                                className="text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1 hover:underline text-xs"
-                              >
-                                Ver <ICONS.ArrowRight size={10} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Upcoming Deadlines */}
-          {upcomingDeadlines.length > 0 && (
-            <div className="flex flex-col">
-              <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2 flex-shrink-0">
-                <span className="w-1.5 h-4 bg-orange-500 rounded-full"></span>
-                Próximos Vencimientos
-              </h3>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 max-h-[300px] md:max-h-[400px] overflow-y-auto">
-                {upcomingDeadlines.slice(0, 8).map((task, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="p-3 hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className="w-4 h-4 border-2 border-orange-500 rounded-lg mt-0.5 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-800 mb-1.5 line-clamp-1">{task.description}</p>
-                          <div className="flex flex-wrap gap-1.5 text-xs items-center">
-                            <span className={`px-2 py-0.5 rounded font-bold ${
-                              task.daysUntil === 0 ? 'bg-rose-100 text-rose-700' :
-                              task.daysUntil === 1 ? 'bg-orange-100 text-orange-700' :
-                              'bg-orange-50 text-orange-600'
-                            }`}>
-                              {task.daysUntil === 0 ? 'Hoy' : task.daysUntil === 1 ? 'Mañana' : `${task.daysUntil}d`}
-                            </span>
-                            <span className="text-gray-600 bg-gray-100 px-2 py-0.5 rounded font-medium">{task.bookName}</span>
-                            {task.assignee && <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-medium">@{task.assignee}</span>}
-                            {onNavigateToEntry && (
-                              <button
-                                onClick={() => onNavigateToEntry(task.bookId, task.entryId)}
-                                className="text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1 hover:underline text-xs"
-                              >
-                                Ver <ICONS.ArrowRight size={10} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
+                ))}
               </div>
             </div>
           )}
         </div>
+
+        {/* Tasks Section - Ultra compact, fixed height */}
+        <div className="flex-shrink-0">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+            {/* Overdue Tasks - Expandable */}
+            {overdueTasks.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs md:text-sm font-bold text-gray-700 flex items-center gap-2">
+                  <span className="w-1.5 h-4 bg-red-600 rounded-full"></span>
+                  Atrasadas ({overdueTasks.length})
+                </h3>
+                <div className="bg-white rounded-lg shadow-sm border border-red-200 space-y-1 p-2">
+                  <AnimatePresence>
+                    {(expandedSections.overdue ? overdueTasks : overdueTasks.slice(0, 2)).map((task, idx) => (
+                      <motion.div
+                        key={`${task.entryId}-${task.description}`}
+                        initial={{ opacity: 0, x: -5, height: 0 }}
+                        animate={{ opacity: 1, x: 0, height: 'auto' }}
+                        exit={{ opacity: 0, x: -5, height: 0 }}
+                        transition={{ delay: idx * 0.02 }}
+                        className="flex items-start gap-2 p-2 rounded hover:bg-red-50/30 transition-colors overflow-hidden"
+                      >
+                        <div className="w-3 h-3 border-2 border-red-600 rounded mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-800 line-clamp-1 mb-1">{task.description}</p>
+                          <div className="flex items-center gap-1">
+                            <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">
+                              {task.daysOverdue === 1 ? '1d' : `${task.daysOverdue}d`}
+                            </span>
+                            <span className="text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded font-medium">{task.bookName}</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                  {overdueTasks.length > 2 && (
+                    <motion.button
+                      onClick={() => toggleSection('overdue')}
+                      className="w-full text-center py-1 hover:bg-red-50/50 rounded transition-colors"
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <span className="text-xs text-red-600 font-medium hover:text-red-700 flex items-center justify-center gap-1">
+                        {expandedSections.overdue ? (
+                          <>
+                            <ICONS.ChevronUp size={12} />
+                            Mostrar menos
+                          </>
+                        ) : (
+                          <>
+                            <ICONS.ChevronDown size={12} />
+                            +{overdueTasks.length - 2} más
+                          </>
+                        )}
+                      </span>
+                    </motion.button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* High Priority Tasks - Expandable */}
+            {highPriorityTasks.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs md:text-sm font-bold text-gray-700 flex items-center gap-2">
+                  <span className="w-1.5 h-4 bg-rose-500 rounded-full"></span>
+                  Prioridad Alta ({highPriorityTasks.length})
+                </h3>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 space-y-1 p-2">
+                  <AnimatePresence>
+                    {(expandedSections.highPriority ? highPriorityTasks : highPriorityTasks.slice(0, 2)).map((task, idx) => (
+                      <motion.div
+                        key={`${task.entryId}-${task.description}`}
+                        initial={{ opacity: 0, x: -5, height: 0 }}
+                        animate={{ opacity: 1, x: 0, height: 'auto' }}
+                        exit={{ opacity: 0, x: -5, height: 0 }}
+                        transition={{ delay: idx * 0.02 }}
+                        className="flex items-start gap-2 p-2 rounded hover:bg-gray-50 transition-colors overflow-hidden"
+                      >
+                        <div className="w-3 h-3 border-2 border-rose-500 rounded mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-800 line-clamp-1 mb-1">{task.description}</p>
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded font-medium">{task.bookName}</span>
+                            {task.assignee && <span className="text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-medium">@{task.assignee}</span>}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                  {highPriorityTasks.length > 2 && (
+                    <motion.button
+                      onClick={() => toggleSection('highPriority')}
+                      className="w-full text-center py-1 hover:bg-gray-50 rounded transition-colors"
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <span className="text-xs text-gray-600 font-medium hover:text-gray-700 flex items-center justify-center gap-1">
+                        {expandedSections.highPriority ? (
+                          <>
+                            <ICONS.ChevronUp size={12} />
+                            Mostrar menos
+                          </>
+                        ) : (
+                          <>
+                            <ICONS.ChevronDown size={12} />
+                            +{highPriorityTasks.length - 2} más
+                          </>
+                        )}
+                      </span>
+                    </motion.button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Upcoming Deadlines - Expandable */}
+            {upcomingDeadlines.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs md:text-sm font-bold text-gray-700 flex items-center gap-2">
+                  <span className="w-1.5 h-4 bg-orange-500 rounded-full"></span>
+                  Próximos ({upcomingDeadlines.length})
+                </h3>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 space-y-1 p-2">
+                  <AnimatePresence>
+                    {(expandedSections.upcoming ? upcomingDeadlines : upcomingDeadlines.slice(0, 2)).map((task, idx) => (
+                      <motion.div
+                        key={`${task.entryId}-${task.description}`}
+                        initial={{ opacity: 0, x: -5, height: 0 }}
+                        animate={{ opacity: 1, x: 0, height: 'auto' }}
+                        exit={{ opacity: 0, x: -5, height: 0 }}
+                        transition={{ delay: idx * 0.02 }}
+                        className="flex items-start gap-2 p-2 rounded hover:bg-gray-50 transition-colors overflow-hidden"
+                      >
+                        <div className="w-3 h-3 border-2 border-orange-500 rounded mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-800 line-clamp-1 mb-1">{task.description}</p>
+                          <div className="flex items-center gap-1">
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                              task.daysUntil === 0 ? 'bg-rose-100 text-rose-700' :
+                              task.daysUntil === 1 ? 'bg-orange-100 text-orange-700' :
+                              'bg-orange-50 text-orange-600'
+                            }`}>
+                              {task.daysUntil === 0 ? 'Hoy' : task.daysUntil === 1 ? 'Mañ' : `${task.daysUntil}d`}
+                            </span>
+                            <span className="text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded font-medium">{task.bookName}</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                  {upcomingDeadlines.length > 2 && (
+                    <motion.button
+                      onClick={() => toggleSection('upcoming')}
+                      className="w-full text-center py-1 hover:bg-gray-50 rounded transition-colors"
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <span className="text-xs text-gray-600 font-medium hover:text-gray-700 flex items-center justify-center gap-1">
+                        {expandedSections.upcoming ? (
+                          <>
+                            <ICONS.ChevronUp size={12} />
+                            Mostrar menos
+                          </>
+                        ) : (
+                          <>
+                            <ICONS.ChevronDown size={12} />
+                            +{upcomingDeadlines.length - 2} más
+                          </>
+                        )}
+                      </span>
+                    </motion.button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Empty State */}
-      {highPriorityTasks.length === 0 && upcomingDeadlines.length === 0 && favoriteBooks.length === 0 && (
-        <div className="flex-1 flex items-center justify-center">
+      {highPriorityTasks.length === 0 && upcomingDeadlines.length === 0 && overdueTasks.length === 0 && favoriteBooks.length === 0 && (
+        <div className="flex-1 flex items-center justify-center py-8 md:py-12">
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-200"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-8 md:py-12 px-4 bg-white rounded-lg md:rounded-xl border border-dashed border-gray-200 max-w-sm mx-auto"
           >
-            <div className="bg-gray-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
-              <ICONS.StickyNote className="text-gray-300" size={24} />
+            <div className="bg-gray-50 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center mx-auto mb-3 md:mb-4">
+              <ICONS.StickyNote className="text-gray-300 md:w-6 md:h-6" size={20} />
             </div>
-            <p className="text-gray-500 font-medium text-sm">Tu bitácora está vacía.</p>
-            <p className="text-xs text-gray-400 mt-1">Escribe tu primera idea arriba 👆</p>
-            <p className="text-xs text-gray-300 mt-2 italic">¡Es hora de empezar a hacer historia! 📖✨</p>
+            <p className="text-gray-500 font-medium text-sm md:text-base mb-1">Tu bitácora está vacía</p>
+            <p className="text-xs md:text-sm text-gray-400">Escribe tu primera idea arriba 👆</p>
+            <p className="text-xs md:text-sm text-gray-300 mt-2 italic">¡Es hora de empezar a hacer historia! 📖✨</p>
           </motion.div>
         </div>
       )}

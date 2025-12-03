@@ -154,6 +154,7 @@ export const CACHE_KEYS = {
   BOOKS: 'books',
   ENTRIES: 'entries',
   FOLDERS: 'folders',
+  THREADS: 'threads',
   USER_DATA: 'user_data',
 } as const;
 

@@ -41,7 +41,11 @@ import {
   Bell,
   AlertCircle,
   Info,
-  Trash2
+  Trash2,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  Filter
 } from 'lucide-react';
 import { NoteType } from './types';
 
@@ -89,7 +93,11 @@ export const ICONS = {
   Bell,
   AlertCircle,
   Info,
-  Trash2
+  Trash2,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  Filter
 };
 
 // Estilos más vibrantes y redondeados ("pill" style)

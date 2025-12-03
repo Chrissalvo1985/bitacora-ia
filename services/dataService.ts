@@ -1,5 +1,5 @@
 import * as db from './db';
-import { Book, Entry, TaskItem, Entity, EntryStatus, NoteType, EntityType, Folder } from '../types';
+import { Book, Entry, TaskItem, Entity, EntryStatus, NoteType, EntityType, Folder, Thread } from '../types';
 
 // Convert DB types to app types
 export function dbFolderToFolder(dbFolder: db.DbFolder): Folder {
@@ -17,7 +17,6 @@ export function dbBookToBook(dbBook: db.DbBook): Book {
     id: dbBook.id,
     name: dbBook.name.slice(0, 200), // Sanitize length
     description: dbBook.description ? dbBook.description.slice(0, 500) : undefined,
-    context: dbBook.context ? dbBook.context.slice(0, 1000) : undefined,
     folderId: dbBook.folder_id || undefined,
     createdAt: new Date(dbBook.created_at).getTime(),
     updatedAt: new Date(dbBook.updated_at).getTime(),
@@ -38,6 +37,8 @@ export function dbEntryToEntry(
     summary: dbEntry.summary,
     tasks,
     entities,
+    threadId: dbEntry.thread_id || undefined,
+    aiRewrittenText: dbEntry.ai_rewritten_text || undefined,
     status: dbEntry.status as EntryStatus,
   };
 }
@@ -69,6 +70,16 @@ export function dbEntityToEntity(dbEntity: db.DbEntity): Entity {
     id: dbEntity.id,
     name: dbEntity.name,
     type: dbEntity.type as EntityType,
+  };
+}
+
+export function dbThreadToThread(dbThread: db.DbThread): Thread {
+  return {
+    id: dbThread.id,
+    title: dbThread.title,
+    bookId: dbThread.book_id,
+    createdAt: new Date(dbThread.created_at).getTime(),
+    updatedAt: new Date(dbThread.updated_at).getTime(),
   };
 }
 
@@ -168,7 +179,7 @@ export async function saveEntry(
         entry.bookId = foundBook.id;
       } else {
         // Create new book
-        await db.createBook(entry.bookId, userId, analysis.targetBookName, undefined, 'Nuevo tema detectado.', undefined);
+        await db.createBook(entry.bookId, userId, analysis.targetBookName, undefined, undefined);
         targetBook = await db.getBookById(entry.bookId, userId);
       }
     }
@@ -181,7 +192,9 @@ export async function saveEntry(
       entry.bookId,
       entry.type,
       entry.summary,
-      entry.status
+      entry.status,
+      entry.threadId,
+      entry.aiRewrittenText
     );
 
     // Save tasks
@@ -237,6 +250,16 @@ export async function deleteTaskFromDb(taskId: string): Promise<void> {
     await db.deleteTask(taskId);
   } catch (error) {
     console.error('Error deleting task:', error);
+    throw error;
+  }
+}
+
+// Update entry (user-scoped)
+export async function updateEntryInDb(entryId: string, updates: { threadId?: string | null; aiRewrittenText?: string | null }): Promise<void> {
+  try {
+    await db.updateEntry(entryId, updates);
+  } catch (error) {
+    console.error('Error updating entry:', error);
     throw error;
   }
 }
@@ -303,9 +326,9 @@ export async function getAllTasksFromDb(filters?: { isDone?: boolean; bookId?: s
 }
 
 // Create book (user-scoped)
-export async function createBook(id: string, userId: string, name: string, description?: string, context?: string, folderId?: string): Promise<Book> {
+export async function createBook(id: string, userId: string, name: string, description?: string, folderId?: string): Promise<Book> {
   try {
-    await db.createBook(id, userId, name, description, context, folderId);
+    await db.createBook(id, userId, name, description, undefined, folderId);
     const dbBook = await db.getBookById(id, userId);
     if (!dbBook) throw new Error('Book not created');
     return dbBookToBook(dbBook);
@@ -362,6 +385,118 @@ export async function updateBookFolder(bookId: string, folderId: string | null):
   } catch (error) {
     console.error('Error updating book folder:', error);
     throw error;
+  }
+}
+
+// Threads operations (user-scoped)
+export async function loadAllThreads(userId: string): Promise<Thread[]> {
+  try {
+    const dbThreads = await db.getAllThreads(userId);
+    return dbThreads.map(dbThreadToThread);
+  } catch (error) {
+    console.error('Error loading threads:', error);
+    return [];
+  }
+}
+
+export async function getThreadById(id: string, userId: string): Promise<Thread | null> {
+  try {
+    const dbThread = await db.getThreadById(id, userId);
+    return dbThread ? dbThreadToThread(dbThread) : null;
+  } catch (error) {
+    console.error('Error getting thread:', error);
+    return null;
+  }
+}
+
+export async function getThreadsByBookId(bookId: string, userId: string): Promise<Thread[]> {
+  try {
+    const dbThreads = await db.getThreadsByBookId(bookId, userId);
+    return dbThreads.map(dbThreadToThread);
+  } catch (error) {
+    console.error('Error loading threads by book:', error);
+    return [];
+  }
+}
+
+export async function createThread(id: string, userId: string, title: string, bookId: string): Promise<Thread> {
+  try {
+    await db.createThread(id, userId, title, bookId);
+    const dbThread = await db.getThreadById(id, userId);
+    if (!dbThread) throw new Error('Thread not created');
+    return dbThreadToThread(dbThread);
+  } catch (error) {
+    console.error('Error creating thread:', error);
+    throw error;
+  }
+}
+
+export async function updateThread(id: string, updates: { title?: string }): Promise<void> {
+  try {
+    await db.updateThread(id, updates);
+  } catch (error) {
+    console.error('Error updating thread:', error);
+    throw error;
+  }
+}
+
+export async function deleteThread(id: string, userId: string): Promise<void> {
+  try {
+    await db.deleteThread(id, userId);
+  } catch (error) {
+    console.error('Error deleting thread:', error);
+    throw error;
+  }
+}
+
+export async function getEntriesByThreadId(threadId: string, userId: string): Promise<Entry[]> {
+  try {
+    const dbEntries = await db.getEntriesByThreadId(threadId, userId);
+    
+    if (dbEntries.length === 0) {
+      return [];
+    }
+    
+    // Load tasks and entities for all entries
+    const entryIds = dbEntries.map(e => e.id);
+    const [allTasks, allEntities] = await Promise.all([
+      db.getTasksByEntryIds(entryIds),
+      db.getEntitiesByEntryIds(entryIds),
+    ]);
+    
+    // Group tasks and entities by entry_id
+    const tasksByEntry = new Map<string, TaskItem[]>();
+    const entitiesByEntry = new Map<string, Entity[]>();
+    
+    allTasks.forEach(task => {
+      const entryId = task.entry_id;
+      if (!tasksByEntry.has(entryId)) {
+        tasksByEntry.set(entryId, []);
+      }
+      tasksByEntry.get(entryId)!.push(dbTaskToTaskItem(task));
+    });
+    
+    allEntities.forEach(entity => {
+      const entryId = entity.entry_id;
+      if (!entitiesByEntry.has(entryId)) {
+        entitiesByEntry.set(entryId, []);
+      }
+      entitiesByEntry.get(entryId)!.push(dbEntityToEntity(entity));
+    });
+    
+    // Build entries with pre-loaded tasks and entities
+    const entries: Entry[] = dbEntries.map(dbEntry => 
+      dbEntryToEntry(
+        dbEntry,
+        tasksByEntry.get(dbEntry.id) || [],
+        entitiesByEntry.get(dbEntry.id) || []
+      )
+    );
+    
+    return entries;
+  } catch (error) {
+    console.error('Error loading entries by thread:', error);
+    return [];
   }
 }
 

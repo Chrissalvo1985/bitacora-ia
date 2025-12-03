@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { Book, NoteType, Attachment, MultiTopicAnalysis, TopicEntry, TaskItem } from '../types';
+import { Book, NoteType, Attachment, MultiTopicAnalysis, TopicEntry, TaskItem, Entry, Thread } from '../types';
 
 // Get OpenAI API key securely
 function getOpenAIApiKey(): string {
@@ -45,7 +45,7 @@ export const analyzeEntry = async (
   
   // Build detailed books context with names and descriptions
   const booksContext = existingBooks.map(b => 
-    `- "${b.name}"${b.context ? ` (Contexto: ${b.context})` : ''}`
+    `- "${b.name}"${b.description ? ` (${b.description})` : ''}`
   ).join('\n');
   
   const systemPrompt = `Eres un asistente personal IA extremadamente inteligente y eficiente.
@@ -53,20 +53,20 @@ Analiza la siguiente entrada del usuario (nota de voz, pensamiento rápido o res
 
 Fecha Actual: ${new Date().toLocaleDateString('es-ES')}
 
-LIBRETAS EXISTENTES (con su contexto):
+LIBRETAS EXISTENTES:
 ${booksContext || 'No hay libretas existentes'}
 
 INSTRUCCIONES CRÍTICAS:
 
 1. ASIGNACIÓN DE LIBRETA (MUY IMPORTANTE):
-   - Analiza PROFUNDAMENTE el contenido del texto y compáralo con el NOMBRE y CONTEXTO de cada libreta existente.
-   - LEE el contexto de cada libreta para entender de qué trata realmente.
+   - Analiza PROFUNDAMENTE el contenido del texto y compáralo con el NOMBRE y DESCRIPCIÓN de cada libreta existente.
+   - LEE la descripción de cada libreta para entender de qué trata realmente.
    - NO asignes a múltiples libretas. Toda la información relacionada debe ir a UNA SOLA libreta.
-   - Si el texto menciona temas específicos (ej: "Paneles BI", "Panel de Supervisores"), busca la libreta cuyo CONTEXTO o NOMBRE coincida mejor con ese tema.
+   - Si el texto menciona temas específicos (ej: "Paneles BI", "Panel de Supervisores"), busca la libreta cuyo NOMBRE o DESCRIPCIÓN coincida mejor con ese tema.
    - Si menciona varios elementos del mismo tema/proyecto, TODO debe ir a la misma libreta.
-   - Ejemplo: Si el texto habla de "Paneles BI" y hay una libreta "Paneles BI" o una libreta cuyo contexto mencione "BI" o "Paneles", asigna TODO ahí.
-   - Ejemplo: Si el texto menciona "Panel de Supervisores" y hay una libreta "Panel de Supervisores" o cuyo contexto mencione "supervisores", asigna ahí, NO a otra libreta.
-   - Si no hay match claro con el CONTEXTO de ninguna libreta existente, sugiere un nombre NUEVO, corto y descriptivo.
+   - Ejemplo: Si el texto habla de "Paneles BI" y hay una libreta "Paneles BI" o una libreta cuya descripción mencione "BI" o "Paneles", asigna TODO ahí.
+   - Ejemplo: Si el texto menciona "Panel de Supervisores" y hay una libreta "Panel de Supervisores" o cuya descripción mencione "supervisores", asigna ahí, NO a otra libreta.
+   - Si no hay match claro con ninguna libreta existente, sugiere un nombre NUEVO, corto y descriptivo.
    - IMPORTANTE: Si el texto contiene información sobre múltiples elementos del mismo tema (ej: varios paneles con sus observaciones), es UNA SOLA entrada en UNA SOLA libreta, NO múltiples entradas.
    - El nombre de la libreta debe ser EXACTAMENTE igual al nombre de una libreta existente (comparando sin distinguir mayúsculas/minúsculas) o un nombre nuevo.
 
@@ -169,7 +169,7 @@ IMPORTANTE FINAL:
 
 INSTRUCCIONES ESPECÍFICAS:
 1. Determina si es INFORMACIÓN/ANOTACIÓN (NOTE sin tareas) o contiene TAREAS REALES (TASK con tareas).
-2. Asigna a la libreta correcta basándote en el NOMBRE y CONTEXTO de las libretas existentes.
+2. Asigna a la libreta correcta basándote en el NOMBRE y DESCRIPCIÓN de las libretas existentes.
 3. Si es información sobre múltiples elementos del mismo tema, TODO debe ir en UNA SOLA entrada en UNA SOLA libreta.
 4. Si es solo información descriptiva (correos, reportes, estados), NO crees tareas.`
     : hasPDFWithText
@@ -187,7 +187,7 @@ INSTRUCCIONES ESPECÍFICAS:
 
 INSTRUCCIONES ESPECÍFICAS:
 1. Determina si es INFORMACIÓN/ANOTACIÓN (NOTE sin tareas) o contiene TAREAS REALES (TASK con tareas).
-2. Asigna a la libreta correcta basándote en el NOMBRE y CONTEXTO de las libretas existentes.
+2. Asigna a la libreta correcta basándote en el NOMBRE y DESCRIPCIÓN de las libretas existentes.
 3. Si es información sobre múltiples elementos del mismo tema, TODO debe ir en UNA SOLA entrada en UNA SOLA libreta.
 4. Si es solo información descriptiva (correos, reportes, estados), NO crees tareas.`;
 
@@ -426,7 +426,7 @@ export const queryBitacora = async (
     .map(t => `- ${t.description}${t.assignee ? ` (${t.assignee})` : ''}${t.dueDate ? ` [${t.dueDate}]` : ''} | Observaciones: ${t.completionNotes}`)
     .join('\n');
 
-  const booksText = context.books.map(b => `- ${b.name}${b.context ? `: ${b.context}` : ''}`).join('\n');
+  const booksText = context.books.map(b => `- ${b.name}${b.description ? `: ${b.description}` : ''}`).join('\n');
 
   const prompt = `Eres un asistente inteligente que responde preguntas sobre la Bitácora del usuario.
 
@@ -491,7 +491,7 @@ export const analyzeMultiTopicEntry = async (
   
   // Build detailed books context
   const booksContext = existingBooks.map(b => 
-    `- "${b.name}"${b.context ? ` (Contexto: ${b.context})` : ''}`
+    `- "${b.name}"${b.description ? ` (${b.description})` : ''}`
   ).join('\n');
 
   // Build pending tasks context
@@ -504,7 +504,7 @@ export const analyzeMultiTopicEntry = async (
 
 Fecha Actual: ${new Date().toLocaleDateString('es-ES')}
 
-LIBRETAS EXISTENTES (con su contexto):
+LIBRETAS EXISTENTES:
 ${booksContext || 'No hay libretas existentes'}
 
 TAREAS PENDIENTES ACTUALES:
@@ -533,10 +533,16 @@ REGLAS DE DETECCIÓN MULTI-TEMA:
 - Si el texto habla de UN SOLO proyecto con múltiples aspectos → NO es multi-tema (todo a una libreta)
 - Palabras clave que indican cambio de tema: "respecto a", "sobre", "en cuanto a", "por otro lado", "también", nombres de proyectos diferentes
 
-REGLAS DE ASIGNACIÓN A LIBRETAS:
-- Compara el contenido con el NOMBRE y CONTEXTO de cada libreta existente
-- Si menciona un proyecto/tema que coincide con una libreta existente → usa esa libreta
-- Si es un tema nuevo → sugiere nombre para nueva libreta
+REGLAS DE ASIGNACIÓN A LIBRETAS (MUY IMPORTANTE):
+- Compara el contenido con el NOMBRE y DESCRIPCIÓN de cada libreta existente
+- Busca coincidencias SEMÁNTICAS, no solo exactas:
+  * Si el texto habla de "sueldos", "salarios", "revisión de sueldos" → busca libretas relacionadas con "sueldos", "analistas", "recursos humanos", "personal"
+  * Si el texto menciona personas específicas → busca libretas que mencionen esas personas o sus proyectos
+  * Si el texto habla de un tema/proyecto → busca libretas con nombres o descripciones relacionadas
+- PRIORIZA libretas existentes sobre crear nuevas
+- Si hay AMBIGÜEDAD, elige la libreta más relacionada semánticamente
+- Si es un tema completamente nuevo → sugiere nombre para nueva libreta
+- NO asignes a libretas genéricas si hay una específica que coincide mejor
 
 DETECCIÓN DE TAREAS COMPLETADAS (MUY IMPORTANTE):
 - Si el texto indica que algo se "terminó", "completó", "cerró", "finalizó" → marca la tarea como completada
@@ -783,6 +789,194 @@ INSTRUCCIONES:
         taskActions: [],
       }],
     };
+  }
+};
+
+// ============================================================================
+// THREAD RELATION DETECTION
+// ============================================================================
+
+export interface ThreadRelationResult {
+  hasRelation: boolean;
+  relatedThreadId?: string | null;
+  relatedEntryIds: string[];
+  confidence: number;
+  suggestedThreadTitle?: string | null;
+  reason: string;
+}
+
+export const detectThreadRelations = async (
+  text: string,
+  existingEntries: Entry[],
+  existingThreads: Thread[],
+  targetBookId?: string
+): Promise<ThreadRelationResult> => {
+  // Limit to recent entries for performance, but prioritize entries from the same book
+  const recentEntries = existingEntries.slice(0, 100);
+  
+  // Group entries by thread for better context
+  const entriesByThread = new Map<string, Entry[]>();
+  recentEntries.forEach(e => {
+    if (e.threadId) {
+      if (!entriesByThread.has(e.threadId)) {
+        entriesByThread.set(e.threadId, []);
+      }
+      entriesByThread.get(e.threadId)!.push(e);
+    }
+  });
+
+  // Build rich context for threads with their entries
+  const threadsContext = existingThreads.map(t => {
+    const threadEntries = entriesByThread.get(t.id) || [];
+    const entriesSummary = threadEntries
+      .slice(0, 5)
+      .map(e => `  - ${e.summary}`)
+      .join('\n');
+    return `ID: ${t.id} | Título: "${t.title}" | Libreta: ${t.bookId}${entriesSummary ? `\n  Entradas en este hilo:\n${entriesSummary}` : ''}`;
+  }).join('\n\n');
+
+  // Build entries context, prioritizing same book
+  const sameBookEntries = targetBookId 
+    ? recentEntries.filter(e => e.bookId === targetBookId)
+    : recentEntries;
+  const otherEntries = targetBookId
+    ? recentEntries.filter(e => e.bookId !== targetBookId).slice(0, 30)
+    : [];
+
+  const entriesContext = [
+    ...sameBookEntries.slice(0, 30).map(e => 
+      `ID: ${e.id} | Tipo: ${e.type} | Resumen: "${e.summary}" | Libreta: ${e.bookId}${e.threadId ? ` | Hilo: ${e.threadId}` : ''}`
+    ),
+    ...otherEntries.map(e => 
+      `ID: ${e.id} | Tipo: ${e.type} | Resumen: "${e.summary}" | Libreta: ${e.bookId}${e.threadId ? ` | Hilo: ${e.threadId}` : ''}`
+    )
+  ].join('\n');
+
+  const prompt = `Eres un asistente experto que detecta relaciones semánticas entre entradas de una bitácora.
+
+Analiza si el nuevo texto está relacionado con entradas existentes o hilos de conversación.
+
+HILOS EXISTENTES (con sus entradas):
+${threadsContext || 'No hay hilos existentes'}
+
+ENTRADAS EXISTENTES:
+${entriesContext || 'No hay entradas existentes'}
+
+TEXTO NUEVO:
+"${text}"
+
+INSTRUCCIONES CRÍTICAS:
+1. Analiza PROFUNDAMENTE si el texto nuevo está relacionado con algún hilo o entrada existente
+2. Considera relaciones por:
+   - Mismo tema/proyecto (ej: "sueldos de analistas", "revisión de sueldos", "ajuste salarial" = mismo tema)
+   - Mismas personas mencionadas (ej: "Claudia", "Caro" = mismas personas)
+   - Mismo contexto de trabajo (ej: "revisión", "ajuste", "evaluación" = contexto relacionado)
+   - Continuación de conversación o actualización de tema existente
+3. PRIORIZA hilos existentes sobre entradas individuales
+4. Si encuentras un hilo cuyo título o contenido coincide con el tema del texto nuevo, DEBES sugerirlo
+5. Si hay múltiples entradas relacionadas pero NO hay hilo, sugiere crear uno nuevo
+6. Si no hay relación clara, retorna hasRelation: false
+
+EJEMPLOS DE RELACIONES VÁLIDAS:
+- Texto: "Claudia revisará el sueldo de Caro" + Hilo: "Revisión de sueldos de analistas" → RELACIONADO (mismo tema: sueldos)
+- Texto: "Ajuste salarial para Caro" + Entrada: "Revisar sueldos de analistas" → RELACIONADO (mismo tema)
+- Texto: "Reunión con Claudia sobre sueldos" + Hilo: "Revisión de sueldos" → RELACIONADO (mismo tema y persona)
+
+REGLAS DE CONFIANZA:
+- Confianza > 80%: Relación muy clara (mismo tema exacto, mismas personas)
+- Confianza 70-80%: Relación probable (tema similar, contexto relacionado)
+- Confianza < 70%: No hay relación clara
+
+IMPORTANTE: Si el texto menciona temas que ya están en un hilo existente (aunque con palabras ligeramente diferentes), DEBES detectarlo como relacionado.
+
+Responde en JSON:
+{
+  "hasRelation": true/false,
+  "relatedThreadId": "id del hilo" o null,
+  "relatedEntryIds": ["id1", "id2"] o [],
+  "confidence": 0-100,
+  "suggestedThreadTitle": "título sugerido" o null,
+  "reason": "explicación breve de por qué está relacionado"
+}`;
+
+  try {
+    const response = await callOpenAI(() => openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Eres un asistente que detecta relaciones semánticas entre entradas de una bitácora.' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3, // Lower temperature for more consistent matching
+      max_tokens: 500,
+    }));
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return { hasRelation: false, relatedEntryIds: [], confidence: 0, reason: 'No se pudo analizar' };
+    }
+
+    const data = JSON.parse(content) as ThreadRelationResult;
+    
+    // Only consider relation if confidence is high enough
+    if (data.confidence < 70) {
+      return { hasRelation: false, relatedEntryIds: data.relatedEntryIds, confidence: data.confidence, reason: data.reason };
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Thread relation detection error:', error);
+    return { hasRelation: false, relatedEntryIds: [], confidence: 0, reason: 'Error al analizar' };
+  }
+};
+
+// ============================================================================
+// TEXT REWRITING
+// ============================================================================
+
+export const rewriteTextWithAI = async (text: string): Promise<string> => {
+  if (!text || text.trim().length === 0) {
+    return text;
+  }
+
+  // Limit text length
+  const maxTextLength = 5000;
+  const sanitizedText = text.trim().slice(0, maxTextLength);
+
+  const prompt = `Reescribe el siguiente texto de forma más ordenada, clara y estructurada, manteniendo toda la información importante.
+
+TEXTO ORIGINAL:
+"${sanitizedText}"
+
+INSTRUCCIONES:
+1. Organiza la información de forma lógica
+2. Mejora la redacción sin cambiar el significado
+3. Estructura con párrafos claros
+4. Mantén todos los detalles importantes
+5. Usa un tono profesional pero natural
+6. Si el texto ya está bien estructurado, haz mejoras menores
+
+Responde SOLO con el texto reescrito, sin explicaciones adicionales, sin comillas, sin prefijos como "Texto reescrito:" o similares.`;
+
+  try {
+    const response = await callOpenAI(() => openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Eres un asistente que reescribe textos de forma clara y estructurada.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000,
+    }));
+
+    const rewrittenText = response.choices[0]?.message?.content?.trim() || sanitizedText;
+    
+    // Remove any quotes or prefixes that might have been added
+    return rewrittenText.replace(/^["']|["']$/g, '').replace(/^(Texto reescrito:|Resumen:|Texto:)\s*/i, '').trim() || sanitizedText;
+  } catch (error) {
+    console.error('Text rewriting error:', error);
+    // Return original text on error
+    return sanitizedText;
   }
 };
 

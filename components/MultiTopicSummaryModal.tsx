@@ -20,6 +20,14 @@ interface TopicSummary {
     taskDescription: string;
     completionNotes?: string;
   }>;
+  threadId?: string; // Optional thread ID
+  createNewThread?: boolean; // Whether to create a new thread
+  // Thread relation suggestions from AI
+  suggestedThreadId?: string;
+  suggestedCreateNewThread?: boolean;
+  suggestedThreadTitle?: string | null;
+  threadRelationReason?: string;
+  relatedEntryIds?: string[];
 }
 
 interface MultiTopicSummaryModalProps {
@@ -43,10 +51,11 @@ const MultiTopicSummaryModal: React.FC<MultiTopicSummaryModalProps> = memo(({
   completedTasks,
   fixedBookId
 }) => {
-  const { books } = useBitacora();
+  const { books, threads, createThread } = useBitacora();
   const [editedTopics, setEditedTopics] = useState<TopicSummary[]>(initialTopics);
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
   const [editingBook, setEditingBook] = useState<string | null>(null);
+  const [threadSelections, setThreadSelections] = useState<Record<string, { type: 'none' | 'existing' | 'new'; threadId?: string; newThreadTitle?: string }>>({});
 
   // Reset state when topics change
   useEffect(() => {
@@ -55,7 +64,52 @@ const MultiTopicSummaryModal: React.FC<MultiTopicSummaryModalProps> = memo(({
     if (initialTopics.length === 1) {
       setExpandedTopics(new Set([initialTopics[0].entryId]));
     }
-  }, [initialTopics]);
+    
+    // Auto-select suggested threads from AI
+    const newThreadSelections: Record<string, { type: 'none' | 'existing' | 'new'; threadId?: string; newThreadTitle?: string }> = {};
+    initialTopics.forEach(topic => {
+      if (topic.suggestedThreadId) {
+        // AI suggested an existing thread
+        newThreadSelections[topic.entryId] = {
+          type: 'existing',
+          threadId: topic.suggestedThreadId
+        };
+      } else if (topic.suggestedCreateNewThread && topic.suggestedThreadTitle) {
+        // AI suggested creating a new thread
+        newThreadSelections[topic.entryId] = {
+          type: 'new',
+          newThreadTitle: topic.suggestedThreadTitle
+        };
+      }
+    });
+    if (Object.keys(newThreadSelections).length > 0) {
+      setThreadSelections(newThreadSelections);
+      // Also update editedTopics with suggested thread IDs and update book if thread is in different book
+      setEditedTopics(prev => prev.map(topic => {
+        if (topic.suggestedThreadId) {
+          // Check if suggested thread is in a different book
+          const suggestedThread = threads.find(t => t.id === topic.suggestedThreadId);
+          if (suggestedThread && suggestedThread.bookId !== topic.bookId) {
+            const threadBook = books.find(b => b.id === suggestedThread.bookId);
+            if (threadBook) {
+              return { 
+                ...topic, 
+                bookId: threadBook.id,
+                bookName: threadBook.name,
+                isNewBook: false,
+                threadId: topic.suggestedThreadId, 
+                createNewThread: false 
+              };
+            }
+          }
+          return { ...topic, threadId: topic.suggestedThreadId, createNewThread: false };
+        } else if (topic.suggestedCreateNewThread) {
+          return { ...topic, createNewThread: true };
+        }
+        return topic;
+      }));
+    }
+  }, [initialTopics, threads, books]);
 
   if (!isOpen) return null;
 
@@ -114,12 +168,27 @@ const MultiTopicSummaryModal: React.FC<MultiTopicSummaryModalProps> = memo(({
     setEditingBook(null);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (editedTopics.length === 0) {
       onClose();
       return;
     }
-    onConfirm(editedTopics);
+    
+    // Create new threads if needed
+    const topicsWithThreads = await Promise.all(editedTopics.map(async (topic) => {
+      if (topic.createNewThread && threadSelections[topic.entryId]?.newThreadTitle) {
+        try {
+          const newThread = await createThread(threadSelections[topic.entryId].newThreadTitle!, topic.bookId);
+          return { ...topic, threadId: newThread.id, createNewThread: false };
+        } catch (error) {
+          console.error('Error creating thread:', error);
+          return topic;
+        }
+      }
+      return topic;
+    }));
+    
+    onConfirm(topicsWithThreads);
   };
 
   const modalContent = (
@@ -364,6 +433,203 @@ const MultiTopicSummaryModal: React.FC<MultiTopicSummaryModalProps> = memo(({
                                     </div>
                                   </div>
                                 )}
+
+                                {/* Thread Selection */}
+                                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-semibold text-gray-700">Hilo de conversación</p>
+                                    {topic.suggestedThreadId && (
+                                      <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
+                                        <ICONS.Sparkles size={10} />
+                                        Sugerido por IA
+                                      </span>
+                                    )}
+                                  </div>
+                                  
+                                  {/* AI Suggestion Alert */}
+                                  {topic.suggestedThreadId && topic.threadRelationReason && (
+                                    <div className="mb-3 p-2.5 bg-purple-50 border border-purple-200 rounded-lg">
+                                      <p className="text-[10px] text-purple-700 font-medium mb-1">
+                                        💡 La IA detectó una relación:
+                                      </p>
+                                      <p className="text-[10px] text-purple-600 leading-relaxed">
+                                        {topic.threadRelationReason}
+                                      </p>
+                                    </div>
+                                  )}
+                                  
+                                  <div className="space-y-2">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        name={`thread-${topic.entryId}`}
+                                        checked={!threadSelections[topic.entryId] || threadSelections[topic.entryId].type === 'none'}
+                                        onChange={() => {
+                                          setThreadSelections(prev => ({
+                                            ...prev,
+                                            [topic.entryId]: { type: 'none' }
+                                          }));
+                                          setEditedTopics(prev => {
+                                            const updated = [...prev];
+                                            updated[topicIdx] = { ...updated[topicIdx], threadId: undefined, createNewThread: false };
+                                            return updated;
+                                          });
+                                        }}
+                                        className="text-indigo-600"
+                                      />
+                                      <span className="text-xs text-gray-700">Entrada independiente</span>
+                                    </label>
+                                    
+                                    {/* Existing Threads Option */}
+                                    {(threads.filter(t => t.bookId === topic.bookId).length > 0 || topic.suggestedThreadId) && (
+                                      <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                          type="radio"
+                                          name={`thread-${topic.entryId}`}
+                                          checked={threadSelections[topic.entryId]?.type === 'existing'}
+                                          onChange={() => {
+                                            // Get threads from same book, plus the suggested thread if it's in a different book
+                                            const bookThreads = threads.filter(t => t.bookId === topic.bookId);
+                                            const suggestedThread = topic.suggestedThreadId ? threads.find(t => t.id === topic.suggestedThreadId) : null;
+                                            
+                                            // Pre-select suggested thread if available (even if in different book)
+                                            const defaultThreadId = topic.suggestedThreadId && (bookThreads.some(t => t.id === topic.suggestedThreadId) || suggestedThread)
+                                              ? topic.suggestedThreadId
+                                              : bookThreads[0]?.id;
+                                            if (defaultThreadId) {
+                                              setThreadSelections(prev => ({
+                                                ...prev,
+                                                [topic.entryId]: { type: 'existing', threadId: defaultThreadId }
+                                              }));
+                                              setEditedTopics(prev => {
+                                                const updated = [...prev];
+                                                updated[topicIdx] = { ...updated[topicIdx], threadId: defaultThreadId, createNewThread: false };
+                                                return updated;
+                                              });
+                                            }
+                                          }}
+                                          className="text-indigo-600"
+                                        />
+                                        <span className="text-xs text-gray-700">Agregar a hilo existente</span>
+                                      </label>
+                                    )}
+                                    
+                                    {threadSelections[topic.entryId]?.type === 'existing' && (
+                                      <select
+                                        value={threadSelections[topic.entryId]?.threadId || topic.suggestedThreadId || ''}
+                                        onChange={(e) => {
+                                          const threadId = e.target.value;
+                                          const selectedThread = threads.find(t => t.id === threadId);
+                                          
+                                          // If selected thread is in a different book, update the topic's book
+                                          if (selectedThread && selectedThread.bookId !== topic.bookId) {
+                                            const threadBook = books.find(b => b.id === selectedThread.bookId);
+                                            if (threadBook) {
+                                              setEditedTopics(prev => {
+                                                const updated = [...prev];
+                                                updated[topicIdx] = { 
+                                                  ...updated[topicIdx], 
+                                                  bookId: threadBook.id,
+                                                  bookName: threadBook.name,
+                                                  isNewBook: false,
+                                                  threadId, 
+                                                  createNewThread: false 
+                                                };
+                                                return updated;
+                                              });
+                                            }
+                                          }
+                                          
+                                          setThreadSelections(prev => ({
+                                            ...prev,
+                                            [topic.entryId]: { type: 'existing', threadId }
+                                          }));
+                                          setEditedTopics(prev => {
+                                            const updated = [...prev];
+                                            updated[topicIdx] = { ...updated[topicIdx], threadId, createNewThread: false };
+                                            return updated;
+                                          });
+                                        }}
+                                        className="w-full px-2 py-1.5 rounded border border-gray-200 focus:border-indigo-500 outline-none text-xs mt-1"
+                                      >
+                                        <option value="">Seleccionar hilo...</option>
+                                        {/* Show threads from same book */}
+                                        {threads.filter(t => t.bookId === topic.bookId).map(thread => (
+                                          <option 
+                                            key={thread.id} 
+                                            value={thread.id}
+                                            className={thread.id === topic.suggestedThreadId ? 'font-bold bg-purple-50' : ''}
+                                          >
+                                            {thread.title}
+                                            {thread.id === topic.suggestedThreadId ? ' ⭐ (Sugerido)' : ''}
+                                          </option>
+                                        ))}
+                                        {/* Show suggested thread if it's in a different book */}
+                                        {topic.suggestedThreadId && !threads.some(t => t.id === topic.suggestedThreadId && t.bookId === topic.bookId) && (
+                                          (() => {
+                                            const suggestedThread = threads.find(t => t.id === topic.suggestedThreadId);
+                                            if (suggestedThread) {
+                                              const threadBook = books.find(b => b.id === suggestedThread.bookId);
+                                              return (
+                                                <option 
+                                                  key={suggestedThread.id} 
+                                                  value={suggestedThread.id}
+                                                  className="font-bold bg-purple-50"
+                                                >
+                                                  {suggestedThread.title} ⭐ (Sugerido - {threadBook?.name || 'Otra libreta'})
+                                                </option>
+                                              );
+                                            }
+                                            return null;
+                                          })()
+                                        )}
+                                      </select>
+                                    )}
+                                    
+                                    {/* Create New Thread Option */}
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        name={`thread-${topic.entryId}`}
+                                        checked={threadSelections[topic.entryId]?.type === 'new'}
+                                        onChange={() => {
+                                          const defaultTitle = topic.suggestedThreadTitle || `Hilo: ${topic.bookName}`;
+                                          setThreadSelections(prev => ({
+                                            ...prev,
+                                            [topic.entryId]: { type: 'new', newThreadTitle: defaultTitle }
+                                          }));
+                                          setEditedTopics(prev => {
+                                            const updated = [...prev];
+                                            updated[topicIdx] = { ...updated[topicIdx], threadId: undefined, createNewThread: true };
+                                            return updated;
+                                          });
+                                        }}
+                                        className="text-indigo-600"
+                                      />
+                                      <span className="text-xs text-gray-700">
+                                        Crear nuevo hilo
+                                        {topic.suggestedCreateNewThread && (
+                                          <span className="ml-1 text-purple-600 font-semibold">(Sugerido por IA)</span>
+                                        )}
+                                      </span>
+                                    </label>
+                                    
+                                    {threadSelections[topic.entryId]?.type === 'new' && (
+                                      <input
+                                        type="text"
+                                        value={threadSelections[topic.entryId]?.newThreadTitle || topic.suggestedThreadTitle || `Hilo: ${topic.bookName}`}
+                                        onChange={(e) => {
+                                          setThreadSelections(prev => ({
+                                            ...prev,
+                                            [topic.entryId]: { ...prev[topic.entryId], newThreadTitle: e.target.value }
+                                          }));
+                                        }}
+                                        placeholder="Título del hilo"
+                                        className="w-full px-2 py-1.5 rounded border border-gray-200 focus:border-indigo-500 outline-none text-xs mt-1"
+                                      />
+                                    )}
+                                  </div>
+                                </div>
 
                                 {/* Summary */}
                                 <div className="bg-white rounded-lg p-3 border border-gray-200">

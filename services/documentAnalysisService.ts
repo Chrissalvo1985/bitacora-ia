@@ -46,7 +46,7 @@ export const analyzeDocument = async (
     .map(t => `- ${t.description}${t.assignee ? ` (${t.assignee})` : ''}${t.dueDate ? ` [${t.dueDate}]` : ''}`)
     .join('\n');
 
-  const booksContext = existingBooks.map(b => `- ${b.name}${b.context ? `: ${b.context}` : ''}`).join('\n');
+  const booksContext = existingBooks.map(b => `- ${b.name}${b.description ? `: ${b.description}` : ''}`).join('\n');
 
   const systemPrompt = `Eres un analista inteligente de documentos. Analiza el documento/imagen proporcionado y el contexto de la bitácora del usuario.
 

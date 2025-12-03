@@ -61,6 +61,8 @@ export interface Entry {
   summary: string;
   tasks: TaskItem[];
   entities: Entity[]; // People, companies identified
+  threadId?: string; // Thread this entry belongs to
+  aiRewrittenText?: string; // Text rewritten by AI in a more organized way
   
   // Note: Attachments are NOT stored - they're only used as context for AI analysis
 
@@ -79,10 +81,17 @@ export interface Book {
   id: string;
   name: string;
   description?: string; // Short manual description (optional)
-  context?: string; // AI generated context
   folderId?: string; // Optional folder ID for grouping
   createdAt: number;
   updatedAt?: number;
+}
+
+export interface Thread {
+  id: string;
+  title: string;
+  bookId: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface SearchFilters {

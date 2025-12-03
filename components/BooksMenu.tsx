@@ -658,9 +658,9 @@ const BooksMenu: React.FC<BooksMenuProps> = memo(({
                               }`}>
                                 {book.name}
                               </p>
-                              {book.context && (
+                              {book.description && (
                                 <p className="text-xs text-gray-500 line-clamp-1">
-                                  {book.context}
+                                  {book.description}
                                 </p>
                               )}
                             </div>

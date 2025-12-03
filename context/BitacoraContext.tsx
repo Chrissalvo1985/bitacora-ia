@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
-import { Book, Entry, EntryStatus, NoteType, TaskItem, Attachment, SearchFilters, WeeklySummary, Folder, MultiTopicAnalysis, TopicEntry, Entity } from '../types';
-import { analyzeEntry, updateBookContext, generateSummary, queryBitacora, analyzeMultiTopicEntry } from '../services/openaiService';
+import { Book, Entry, EntryStatus, NoteType, TaskItem, Attachment, SearchFilters, WeeklySummary, Folder, MultiTopicAnalysis, TopicEntry, Entity, Thread } from '../types';
+import { analyzeEntry, generateSummary, queryBitacora, analyzeMultiTopicEntry, detectThreadRelations, rewriteTextWithAI } from '../services/openaiService';
 import { analyzeDocument, DocumentInsight } from '../services/documentAnalysisService';
 import { findRelatedEntry } from '../services/entryMatchingService';
 import * as dataService from '../services/dataService';
@@ -29,6 +29,12 @@ interface MultiTopicResult {
       taskDescription: string;
       completionNotes?: string;
     }>;
+    // Thread relation suggestions
+    suggestedThreadId?: string;
+    suggestedCreateNewThread?: boolean;
+    suggestedThreadTitle?: string | null;
+    threadRelationReason?: string;
+    relatedEntryIds?: string[];
   }>;
   overallContext: string;
   completedTasks: number;
@@ -38,6 +44,7 @@ interface BitacoraContextType {
   books: Book[];
   folders: Folder[];
   entries: Entry[];
+  threads: Thread[];
   isLoading: boolean;
   isInitializing: boolean;
   addEntry: (text: string, attachment?: Attachment, skipSummaryModal?: boolean, targetBookId?: string) => Promise<{ 
@@ -96,7 +103,15 @@ interface BitacoraContextType {
       taskDescription: string;
       completionNotes?: string;
     }>;
+    threadId?: string;
+    createNewThread?: boolean;
   }>) => Promise<void>;
+  createThread: (title: string, bookId: string) => Promise<Thread>;
+  updateThread: (id: string, updates: { title?: string }) => Promise<void>;
+  deleteThread: (id: string) => Promise<void>;
+  getThreadById: (id: string) => Thread | undefined;
+  getEntriesByThreadId: (threadId: string) => Entry[];
+  updateEntryThread: (entryId: string, threadId: string | null) => Promise<void>;
 }
 
 const BitacoraContext = createContext<BitacoraContextType | undefined>(undefined);
@@ -109,6 +124,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [books, setBooks] = useState<Book[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [threads, setThreads] = useState<Thread[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -144,28 +160,33 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
         const cachedBooks = CacheService.get<Book[]>(`${CACHE_KEYS.BOOKS}_${user.id}`);
         const cachedEntries = CacheService.get<Entry[]>(`${CACHE_KEYS.ENTRIES}_${user.id}`);
         const cachedFolders = CacheService.get<Folder[]>(`${CACHE_KEYS.FOLDERS}_${user.id}`);
+        const cachedThreads = CacheService.get<Thread[]>(`${CACHE_KEYS.THREADS}_${user.id}`);
         
         if (cachedBooks) setBooks(cachedBooks);
         if (cachedEntries) setEntries(cachedEntries);
         if (cachedFolders) setFolders(cachedFolders);
+        if (cachedThreads) setThreads(cachedThreads);
       }
       
       // Then fetch fresh data in background
-      const [loadedBooks, loadedEntries, loadedFolders] = await Promise.all([
+      const [loadedBooks, loadedEntries, loadedFolders, loadedThreads] = await Promise.all([
         dataService.loadAllBooks(user.id),
         dataService.loadAllEntries(user.id),
         dataService.loadAllFolders(user.id),
+        dataService.loadAllThreads(user.id),
       ]);
       
       // Update state with fresh data
       setBooks(loadedBooks);
       setEntries(loadedEntries);
       setFolders(loadedFolders);
+      setThreads(loadedThreads);
       
       // Update cache
       CacheService.set(`${CACHE_KEYS.BOOKS}_${user.id}`, loadedBooks);
       CacheService.set(`${CACHE_KEYS.ENTRIES}_${user.id}`, loadedEntries);
       CacheService.set(`${CACHE_KEYS.FOLDERS}_${user.id}`, loadedFolders);
+      CacheService.set(`${CACHE_KEYS.THREADS}_${user.id}`, loadedThreads);
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
@@ -301,11 +322,11 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
           
           targetBook = books.find(b => {
             const bookNameLower = b.name.toLowerCase();
-            const bookContextLower = (b.context || '').toLowerCase();
+            const bookDescriptionLower = (b.description || '').toLowerCase();
             const nameMatch = topicKeywords.some(kw => bookNameLower.includes(kw));
-            const contextMatch = topicKeywords.some(kw => bookContextLower.includes(kw));
+            const descriptionMatch = topicKeywords.some(kw => bookDescriptionLower.includes(kw));
             const containsMatch = bookNameLower.includes(topicLower) || topicLower.includes(bookNameLower);
-            return nameMatch || contextMatch || containsMatch;
+            return nameMatch || descriptionMatch || containsMatch;
           });
         }
         
@@ -319,16 +340,65 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
             id: targetBookId,
             name: topic.targetBookName,
             createdAt: Date.now(),
-            context: `Tema detectado desde: "${multiTopicAnalysis.overallContext.slice(0, 100)}..."`
           };
           newBooks.push(targetBook);
           isNewBook = true;
         }
 
-        // Create entry for this topic
+        // ============================================
+        // DETECT THREAD RELATIONS FOR THIS TOPIC
+        // ============================================
+        console.log(`🧠 Detecting thread relations for topic: "${topic.targetBookName}"...`);
+        const threadRelation = await detectThreadRelations(
+          topic.content,
+          entries,
+          threads,
+          targetBookId
+        );
+
+        console.log(`📝 Thread relation result for "${topic.targetBookName}":`, {
+          hasRelation: threadRelation.hasRelation,
+          relatedThreadId: threadRelation.relatedThreadId,
+          confidence: threadRelation.confidence,
+          reason: threadRelation.reason
+        });
+
+        // Determine thread for this entry - but DON'T create it yet, let user decide
+        let suggestedThreadId: string | undefined = undefined;
+        let suggestedCreateNewThread = false;
+        
+        // If a thread is suggested, use the thread's book instead of the AI-detected book
+        if (threadRelation.hasRelation && threadRelation.relatedThreadId) {
+          // Suggest existing thread
+          suggestedThreadId = threadRelation.relatedThreadId;
+          
+          // Find the suggested thread and use its bookId
+          const suggestedThread = threads.find(t => t.id === threadRelation.relatedThreadId);
+          if (suggestedThread) {
+            console.log(`📚 Thread "${suggestedThread.title}" is in book "${suggestedThread.bookId}", updating target book...`);
+            
+            // Update target book to match the thread's book
+            const threadBook = books.find(b => b.id === suggestedThread.bookId);
+            if (threadBook) {
+              targetBook = threadBook;
+              targetBookId = threadBook.id;
+              isNewBook = false;
+              console.log(`✅ Updated target book to "${threadBook.name}" to match suggested thread`);
+            }
+          }
+        } else if (threadRelation.hasRelation && threadRelation.relatedEntryIds.length > 0) {
+          // Suggest creating new thread
+          suggestedCreateNewThread = true;
+        }
+
+        // Rewrite text for this topic
+        const topicRewrittenText = await rewriteTextWithAI(topic.content);
+
+        // Create entry for this topic (without thread yet - user will decide in modal)
         const entry: Entry = {
           id: entryId,
           originalText: topic.content,
+          aiRewrittenText: topicRewrittenText,
           createdAt: Date.now(),
           bookId: targetBookId!,
           type: topic.type as NoteType,
@@ -399,7 +469,13 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
           isNewBook,
           entryId,
           originalText: topic.content,
-          taskActions: topic.taskActions || []
+          taskActions: topic.taskActions || [],
+          // Include thread relation suggestions
+          suggestedThreadId,
+          suggestedCreateNewThread,
+          suggestedThreadTitle: threadRelation.suggestedThreadTitle,
+          threadRelationReason: threadRelation.reason,
+          relatedEntryIds: threadRelation.relatedEntryIds
         });
       }
 
@@ -459,10 +535,9 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
           id: editedAnalysis.bookId,
           name: editedAnalysis.bookName,
           createdAt: Date.now(),
-          context: 'Nuevo tema detectado.'
         };
         setBooks(prev => [...prev, targetBook!]);
-        await dataService.createBook(editedAnalysis.bookId, user.id, editedAnalysis.bookName, undefined, 'Nuevo tema detectado.');
+        await dataService.createBook(editedAnalysis.bookId, user.id, editedAnalysis.bookName);
       }
 
       const finalEntry: Entry = {
@@ -492,16 +567,6 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       // Refresh data from DB to ensure tasks have proper IDs
       await refreshData();
-
-      if (targetBook) {
-        updateBookContext(targetBook.name, targetBook.context, editedAnalysis.summary).then(newContext => {
-          setBooks(prevBooks => prevBooks.map(b => 
-            b.id === editedAnalysis.bookId ? { ...b, context: newContext } : b
-          ));
-        }).catch(error => {
-          console.error('Error updating book context:', error);
-        });
-      }
     } catch (error) {
       console.error('Error confirming entry:', error);
       setEntries(prev => prev.map(e => {
@@ -532,6 +597,8 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
       taskDescription: string;
       completionNotes?: string;
     }>;
+    threadId?: string;
+    createNewThread?: boolean;
   }>): Promise<void> => {
     if (!user?.id) return;
 
@@ -556,25 +623,42 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
             id: topic.bookId,
             name: topic.bookName,
             createdAt: Date.now(),
-            context: `Tema detectado automáticamente.`
           };
           newBooks.push(newBook);
           
           try {
-            await dataService.createBook(newBook.id, user.id, newBook.name, undefined, newBook.context);
+            await dataService.createBook(newBook.id, user.id, newBook.name);
           } catch (error) {
             console.error('Error creating book:', error);
           }
         }
 
-        // Create entry
+        // Rewrite text for this topic
+        const topicRewrittenText = await rewriteTextWithAI(topic.originalText);
+
+        // Handle thread creation if needed
+        let finalThreadId: string | undefined = topic.threadId;
+        if (topic.createNewThread && !topic.threadId) {
+          // Create new thread with a default title
+          const threadTitle = `Hilo: ${topic.bookName}`;
+          try {
+            const newThread = await createThread(threadTitle, topic.bookId);
+            finalThreadId = newThread.id;
+          } catch (error) {
+            console.error('Error creating thread:', error);
+          }
+        }
+
+        // Create entry with rewritten text and thread
         const entry: Entry = {
           id: topic.entryId,
           originalText: topic.originalText,
+          aiRewrittenText: topicRewrittenText,
           createdAt: Date.now(),
           bookId: topic.bookId,
           type: topic.type,
           summary: topic.summary,
+          threadId: finalThreadId,
           tasks: topic.tasks.map(t => ({
             description: t.description,
             assignee: t.assignee,
@@ -638,24 +722,6 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       // Refresh to get proper task IDs
       await refreshData();
-
-      // Update book contexts in background (sequentially to avoid rate limits)
-      for (let i = 0; i < pendingTopics.length; i++) {
-        const topic = pendingTopics[i];
-        const book = [...books, ...newBooks].find(b => b.id === topic.bookId);
-        if (book) {
-          // Add delay between updates to avoid rate limits
-          setTimeout(() => {
-            updateBookContext(book.name, book.context, topic.summary).then(newContext => {
-              setBooks(prevBooks => prevBooks.map(b => 
-                b.id === topic.bookId ? { ...b, context: newContext } : b
-              ));
-            }).catch(error => {
-              console.error('Error updating book context:', error);
-            });
-          }, i * 2000); // 2 seconds delay between each update
-        }
-      }
 
       console.log('✅ Multi-topic entries saved:', {
         entriesCreated: newEntries.length,
@@ -857,7 +923,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const queryAI = async (query: string): Promise<string> => {
-    const context = {
+      const context = {
       entries: entries.map(e => ({
         summary: e.summary,
         type: e.type,
@@ -866,7 +932,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
       })),
       books: books.map(b => ({
         name: b.name,
-        context: b.context,
+        description: b.description,
       })),
       tasks: entries.flatMap(e => e.tasks),
     };
@@ -891,7 +957,7 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
     setBooks(prev => [...prev, newBook]);
 
     try {
-      const created = await dataService.createBook(id, user.id, name, description, undefined, folderId);
+      const created = await dataService.createBook(id, user.id, name, description, folderId);
       return created;
     } catch (error) {
       console.error('Error creating book in DB:', error);
@@ -983,11 +1049,86 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
+  // Thread operations
+  const createThread = async (title: string, bookId: string): Promise<Thread> => {
+    if (!user?.id) {
+      throw new Error('Usuario no autenticado');
+    }
+
+    const id = generateId();
+    const newThread: Thread = {
+      id,
+      title,
+      bookId,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    setThreads(prev => [...prev, newThread]);
+
+    try {
+      const created = await dataService.createThread(id, user.id, title, bookId);
+      return created;
+    } catch (error) {
+      console.error('Error creating thread in DB:', error);
+      return newThread;
+    }
+  };
+
+  const updateThread = async (id: string, updates: { title?: string }): Promise<void> => {
+    setThreads(prev => prev.map(t => 
+      t.id === id ? { ...t, ...updates, updatedAt: Date.now() } : t
+    ));
+
+    try {
+      await dataService.updateThread(id, updates);
+    } catch (error) {
+      console.error('Error updating thread in DB:', error);
+    }
+  };
+
+  const deleteThread = async (id: string): Promise<void> => {
+    setThreads(prev => prev.filter(t => t.id !== id));
+    // Remove thread_id from all entries in this thread
+    setEntries(prev => prev.map(e => 
+      e.threadId === id ? { ...e, threadId: undefined } : e
+    ));
+    
+    try {
+      await dataService.deleteThread(id, user!.id);
+    } catch (error) {
+      console.error('Error deleting thread from DB:', error);
+    }
+  };
+
+  const getThreadById = useCallback((id: string) => threads.find(t => t.id === id), [threads]);
+
+  const getEntriesByThreadId = useCallback((threadId: string) => 
+    entries.filter(e => e.threadId === threadId), [entries]);
+
+  const updateEntryThread = async (entryId: string, threadId: string | null): Promise<void> => {
+    if (!user?.id) return;
+
+    // Optimistic update
+    setEntries(prev => prev.map(e => 
+      e.id === entryId ? { ...e, threadId: threadId || undefined } : e
+    ));
+
+    try {
+      await dataService.updateEntryInDb(entryId, { threadId });
+    } catch (error) {
+      console.error('Error updating entry thread in DB:', error);
+      // Reload to revert
+      await refreshData();
+    }
+  };
+
   return (
     <BitacoraContext.Provider value={{
       books,
       folders,
       entries,
+      threads,
       isLoading,
       isInitializing,
       addEntry,
@@ -1011,6 +1152,12 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
       updateEntrySummary,
       confirmEntryWithEdits,
       confirmMultiTopicEntries,
+      createThread,
+      updateThread,
+      deleteThread,
+      getThreadById,
+      getEntriesByThreadId,
+      updateEntryThread,
     }}>
       {children}
     </BitacoraContext.Provider>

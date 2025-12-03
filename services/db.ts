@@ -64,6 +64,17 @@ export interface DbEntry {
   type: string;
   summary: string;
   status: string;
+  thread_id: string | null;
+  ai_rewritten_text: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbThread {
+  id: string;
+  user_id: string;
+  title: string;
+  book_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -180,6 +191,51 @@ export async function initDatabase() {
       )
     `;
 
+    // Create threads table (conversation threads)
+    await db`
+      CREATE TABLE IF NOT EXISTS threads (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
+    // Add thread_id column to entries table if it doesn't exist (migration)
+    try {
+      const threadIdColumnExists = await db`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'entries' AND column_name = 'thread_id'
+      `;
+      if (threadIdColumnExists.length === 0) {
+        await db`ALTER TABLE entries ADD COLUMN thread_id TEXT REFERENCES threads(id) ON DELETE SET NULL`;
+      }
+    } catch (error) {
+      console.log('Note: thread_id column check skipped:', error);
+    }
+
+    // Add ai_rewritten_text column to entries table if it doesn't exist (migration)
+    try {
+      const aiRewrittenColumnExists = await db`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'entries' AND column_name = 'ai_rewritten_text'
+      `;
+      if (aiRewrittenColumnExists.length === 0) {
+        await db`ALTER TABLE entries ADD COLUMN ai_rewritten_text TEXT`;
+      }
+    } catch (error) {
+      console.log('Note: ai_rewritten_text column check skipped:', error);
+    }
+
+    // Remove context column from books table (migration)
+    // Note: We can't directly drop columns in PostgreSQL without checking first
+    // This is a soft removal - we'll stop using it but won't drop it to avoid data loss
+    // The column will remain but won't be used in new code
+
     // Add folder_id column to books table if it doesn't exist (migration)
     try {
       await db`
@@ -213,9 +269,20 @@ export async function initDatabase() {
     await db`CREATE INDEX IF NOT EXISTS idx_entries_user_id ON entries(user_id)`;
     await db`CREATE INDEX IF NOT EXISTS idx_entries_book_id ON entries(book_id)`;
     await db`CREATE INDEX IF NOT EXISTS idx_entries_created_at ON entries(created_at DESC)`;
+    try {
+      await db`CREATE INDEX IF NOT EXISTS idx_entries_thread_id ON entries(thread_id)`;
+    } catch (e) {
+      console.warn('Could not create thread_id index (may already exist):', e);
+    }
     await db`CREATE INDEX IF NOT EXISTS idx_tasks_entry_id ON tasks(entry_id)`;
     await db`CREATE INDEX IF NOT EXISTS idx_tasks_is_done ON tasks(is_done)`;
     await db`CREATE INDEX IF NOT EXISTS idx_entities_entry_id ON entities(entry_id)`;
+    await db`CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads(user_id)`;
+    try {
+      await db`CREATE INDEX IF NOT EXISTS idx_threads_book_id ON threads(book_id)`;
+    } catch (e) {
+      console.warn('Could not create threads book_id index (may already exist):', e);
+    }
 
     // Note: Default inbox book will be created per user when they first use the app
 
@@ -240,11 +307,11 @@ export async function getBookById(id: string, userId: string): Promise<DbBook | 
   return result[0] || null;
 }
 
-export async function createBook(id: string, userId: string, name: string, description?: string, context?: string, folderId?: string): Promise<DbBook> {
+export async function createBook(id: string, userId: string, name: string, description?: string, folderId?: string): Promise<DbBook> {
   const db = requireDb();
   await db`
-    INSERT INTO books (id, user_id, name, description, context, folder_id)
-    VALUES (${id}, ${userId}, ${name}, ${description || null}, ${context || null}, ${folderId || null})
+    INSERT INTO books (id, user_id, name, description, folder_id)
+    VALUES (${id}, ${userId}, ${name}, ${description || null}, ${folderId || null})
   `;
   const result = await db`SELECT * FROM books WHERE id = ${id} AND user_id = ${userId} LIMIT 1` as DbBook[];
   return result[0];
@@ -291,7 +358,7 @@ export async function deleteFolder(id: string, userId: string): Promise<void> {
   await db`DELETE FROM folders WHERE id = ${id} AND user_id = ${userId}`;
 }
 
-export async function updateBook(id: string, updates: { name?: string; description?: string; context?: string; folderId?: string }): Promise<void> {
+export async function updateBook(id: string, updates: { name?: string; description?: string; folderId?: string }): Promise<void> {
   const db = requireDb();
   if (updates.name !== undefined) {
     await db`UPDATE books SET name = ${updates.name}, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
@@ -301,9 +368,6 @@ export async function updateBook(id: string, updates: { name?: string; descripti
   }
   if (updates.description !== undefined) {
     await db`UPDATE books SET description = ${updates.description}, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
-  }
-  if (updates.context !== undefined) {
-    await db`UPDATE books SET context = ${updates.context}, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
   }
 }
 
@@ -329,6 +393,12 @@ export async function getEntriesByBookId(bookId: string, userId: string): Promis
   return result as DbEntry[];
 }
 
+export async function getEntriesByThreadId(threadId: string, userId: string): Promise<DbEntry[]> {
+  const db = requireDb();
+  const result = await db`SELECT * FROM entries WHERE thread_id = ${threadId} AND user_id = ${userId} ORDER BY created_at ASC`;
+  return result as DbEntry[];
+}
+
 export async function getEntryById(id: string, userId: string): Promise<DbEntry | null> {
   const db = requireDb();
   const result = await db`SELECT * FROM entries WHERE id = ${id} AND user_id = ${userId} LIMIT 1` as DbEntry[];
@@ -342,18 +412,20 @@ export async function createEntry(
   bookId: string,
   type: string,
   summary: string,
-  status: string = 'COMPLETED'
+  status: string = 'COMPLETED',
+  threadId?: string | null,
+  aiRewrittenText?: string | null
 ): Promise<DbEntry> {
   const db = requireDb();
   await db`
-    INSERT INTO entries (id, user_id, original_text, book_id, type, summary, status)
-    VALUES (${id}, ${userId}, ${originalText}, ${bookId}, ${type}, ${summary}, ${status})
+    INSERT INTO entries (id, user_id, original_text, book_id, type, summary, status, thread_id, ai_rewritten_text)
+    VALUES (${id}, ${userId}, ${originalText}, ${bookId}, ${type}, ${summary}, ${status}, ${threadId || null}, ${aiRewrittenText || null})
   `;
   const result = await db`SELECT * FROM entries WHERE id = ${id} AND user_id = ${userId} LIMIT 1` as DbEntry[];
   return result[0];
 }
 
-export async function updateEntry(id: string, updates: { summary?: string; status?: string; type?: string }): Promise<void> {
+export async function updateEntry(id: string, updates: { summary?: string; status?: string; type?: string; threadId?: string | null; aiRewrittenText?: string | null }): Promise<void> {
   const db = requireDb();
   if (updates.summary !== undefined) {
     await db`UPDATE entries SET summary = ${updates.summary}, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
@@ -363,6 +435,12 @@ export async function updateEntry(id: string, updates: { summary?: string; statu
   }
   if (updates.type !== undefined) {
     await db`UPDATE entries SET type = ${updates.type}, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
+  }
+  if (updates.threadId !== undefined) {
+    await db`UPDATE entries SET thread_id = ${updates.threadId || null}, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
+  }
+  if (updates.aiRewrittenText !== undefined) {
+    await db`UPDATE entries SET ai_rewritten_text = ${updates.aiRewrittenText || null}, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
   }
 }
 
@@ -481,6 +559,50 @@ export async function createEntity(id: string, entryId: string, name: string, ty
   `;
   const result = await db`SELECT * FROM entities WHERE id = ${id} LIMIT 1` as DbEntity[];
   return result[0];
+}
+
+// Threads operations (user-scoped)
+export async function getAllThreads(userId: string): Promise<DbThread[]> {
+  const db = requireDb();
+  const result = await db`SELECT * FROM threads WHERE user_id = ${userId} ORDER BY updated_at DESC`;
+  return result as DbThread[];
+}
+
+export async function getThreadById(id: string, userId: string): Promise<DbThread | null> {
+  const db = requireDb();
+  const result = await db`SELECT * FROM threads WHERE id = ${id} AND user_id = ${userId} LIMIT 1` as DbThread[];
+  return result[0] || null;
+}
+
+export async function getThreadsByBookId(bookId: string, userId: string): Promise<DbThread[]> {
+  const db = requireDb();
+  const result = await db`SELECT * FROM threads WHERE book_id = ${bookId} AND user_id = ${userId} ORDER BY updated_at DESC`;
+  return result as DbThread[];
+}
+
+export async function createThread(id: string, userId: string, title: string, bookId: string): Promise<DbThread> {
+  const db = requireDb();
+  await db`
+    INSERT INTO threads (id, user_id, title, book_id)
+    VALUES (${id}, ${userId}, ${title}, ${bookId})
+  `;
+  const result = await db`SELECT * FROM threads WHERE id = ${id} AND user_id = ${userId} LIMIT 1` as DbThread[];
+  return result[0];
+}
+
+export async function updateThread(id: string, updates: { title?: string }): Promise<void> {
+  const db = requireDb();
+  if (updates.title !== undefined) {
+    await db`UPDATE threads SET title = ${updates.title}, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}`;
+  }
+}
+
+export async function deleteThread(id: string, userId: string): Promise<void> {
+  const db = requireDb();
+  // First, remove thread_id from all entries in this thread
+  await db`UPDATE entries SET thread_id = NULL WHERE thread_id = ${id} AND user_id = ${userId}`;
+  // Then delete the thread
+  await db`DELETE FROM threads WHERE id = ${id} AND user_id = ${userId}`;
 }
 
 // Search operations (user-scoped)
