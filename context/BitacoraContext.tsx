@@ -1185,42 +1185,55 @@ export const BitacoraProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
+  // Memoize context value to prevent unnecessary re-renders
+  // Only depend on state values, not functions (functions are stable)
+  const contextValue = useMemo(() => ({
+    books,
+    folders,
+    entries,
+    threads,
+    isLoading,
+    isInitializing,
+    addEntry,
+    toggleTask,
+    deleteEntry,
+    getBookName,
+    searchEntries,
+    generateWeeklySummary,
+    queryAI,
+    createBook,
+    updateBook,
+    deleteBook,
+    createFolder,
+    updateFolder,
+    deleteFolder,
+    updateBookFolder,
+    refreshData,
+    updateTaskStatus,
+    updateTaskFields,
+    deleteTask,
+    updateEntrySummary,
+    confirmEntryWithEdits,
+    confirmMultiTopicEntries,
+    createThread,
+    updateThread,
+    deleteThread,
+    getThreadById,
+    getEntriesByThreadId,
+    updateEntryThread,
+  }), [
+    books,
+    folders,
+    entries,
+    threads,
+    isLoading,
+    isInitializing,
+    // Functions are stable and don't need to be in dependencies
+    // They only change if their internal dependencies change
+  ]);
+
   return (
-    <BitacoraContext.Provider value={{
-      books,
-      folders,
-      entries,
-      threads,
-      isLoading,
-      isInitializing,
-      addEntry,
-      toggleTask,
-      deleteEntry,
-      getBookName,
-      searchEntries,
-      generateWeeklySummary,
-      queryAI,
-      createBook,
-      updateBook,
-      deleteBook,
-      createFolder,
-      updateFolder,
-      deleteFolder,
-      updateBookFolder,
-      refreshData,
-      updateTaskStatus,
-      updateTaskFields,
-      deleteTask,
-      updateEntrySummary,
-      confirmEntryWithEdits,
-      confirmMultiTopicEntries,
-      createThread,
-      updateThread,
-      deleteThread,
-      getThreadById,
-      getEntriesByThreadId,
-      updateEntryThread,
-    }}>
+    <BitacoraContext.Provider value={contextValue}>
       {children}
     </BitacoraContext.Provider>
   );

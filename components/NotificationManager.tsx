@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, memo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ICONS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
@@ -40,8 +40,8 @@ const NotificationManager: React.FC<NotificationManagerProps> = memo(({ showBann
     }
   }, []);
 
-  // Get all tasks from entries
-  const getAllTasks = useCallback(() => {
+  // Get all tasks from entries - memoized to prevent unnecessary recalculations
+  const allTasks = useMemo(() => {
     return entries.flatMap(entry => 
       entry.tasks.map(task => ({
         ...task,
@@ -53,13 +53,13 @@ const NotificationManager: React.FC<NotificationManagerProps> = memo(({ showBann
   // Start notification scheduler when permission is granted
   useEffect(() => {
     if (permission === 'granted') {
-      notificationScheduler.startAutoCheck(getAllTasks);
+      notificationScheduler.startAutoCheck(() => allTasks);
       
       return () => {
         notificationScheduler.stopAutoCheck();
       };
     }
-  }, [permission, getAllTasks]);
+  }, [permission, allTasks]);
 
   // Handle permission request
   const handleRequestPermission = async () => {

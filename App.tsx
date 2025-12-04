@@ -27,7 +27,7 @@ const LoadingFallback = () => (
 );
 
 // Bottom Navigation Component for Mobile
-const BottomNav = ({ activeView, setActiveView, onSearchClick, onSummaryClick, onQueryClick }: any) => {
+const BottomNav = React.memo(({ activeView, setActiveView, onSearchClick, onSummaryClick, onQueryClick }: any) => {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   return (
@@ -74,6 +74,7 @@ const BottomNav = ({ activeView, setActiveView, onSearchClick, onSummaryClick, o
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               onClick={() => setShowMoreMenu(false)}
               className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
             />
@@ -81,7 +82,7 @@ const BottomNav = ({ activeView, setActiveView, onSearchClick, onSummaryClick, o
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
               className="md:hidden fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 pb-[max(24px,env(safe-area-inset-bottom))] max-h-[70vh] overflow-y-auto"
             >
               <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
@@ -150,7 +151,8 @@ const BottomNav = ({ activeView, setActiveView, onSearchClick, onSummaryClick, o
       </AnimatePresence>
     </>
   );
-};
+});
+BottomNav.displayName = 'BottomNav';
 
 // Authenticated Layout - only renders when user is authenticated
 const AuthenticatedLayout = () => {
@@ -285,10 +287,10 @@ const AuthenticatedLayout = () => {
           <AnimatePresence mode="wait">
             <motion.div
               key={activeView}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
             >
               {renderContent()}
             </motion.div>

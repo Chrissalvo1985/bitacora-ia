@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ICONS } from '../constants';
 import { useBitacora } from '../context/BitacoraContext';
 import { Attachment, NoteType, TaskItem } from '../types';
 import MultiTopicSummaryModal from './MultiTopicSummaryModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { extractTextFromPDF } from '../services/pdfService';
+import { useThrottle } from '../hooks/useThrottle';
 
 // Multi-topic result type
 interface MultiTopicModalData {
@@ -572,9 +573,19 @@ const CaptureInput: React.FC<CaptureInputProps> = ({ bookId }) => {
       ctx.lineJoin = 'round';
     };
 
+    // Throttled resize handler for better performance
+    let lastResize = 0;
+    const throttledResize = () => {
+      const now = Date.now();
+      if (now - lastResize >= 150) {
+        lastResize = now;
+        resizeCanvas();
+      }
+    };
+
     resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
+    window.addEventListener('resize', throttledResize);
+    return () => window.removeEventListener('resize', throttledResize);
   }, [isPenMode]);
 
   // Toggle pen mode manually

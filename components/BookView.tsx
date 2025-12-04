@@ -4,6 +4,7 @@ import EntryCard from './EntryCard';
 import { ICONS, TYPE_STYLES, TYPE_ICONS, TYPE_LABELS } from '../constants';
 import CaptureInput from './CaptureInput';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useThrottle } from '../hooks/useThrottle';
 
 interface BookViewProps {
   bookId: string;
@@ -24,15 +25,17 @@ const BookView: React.FC<BookViewProps> = memo(({ bookId }) => {
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
   
+  // Throttled resize handler for better performance
+  const checkSize = useThrottle(() => {
+    setIsLargeScreen(window.innerWidth >= 1024);
+    setIsMobile(window.innerWidth < 768);
+  }, 150);
+
   useEffect(() => {
-    const checkSize = () => {
-      setIsLargeScreen(window.innerWidth >= 1024);
-      setIsMobile(window.innerWidth < 768);
-    };
     checkSize();
     window.addEventListener('resize', checkSize);
     return () => window.removeEventListener('resize', checkSize);
-  }, []);
+  }, [checkSize]);
   
   const book = books.find(b => b.id === bookId);
   

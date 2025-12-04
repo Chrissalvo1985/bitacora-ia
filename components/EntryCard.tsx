@@ -105,7 +105,7 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
     <motion.div
       id={`entry-${entry.id}`} 
       className={`group bg-white rounded-2xl shadow-sm border ${config.border} hover:shadow-lg transition-all duration-300 overflow-hidden`}
-      layout
+      initial={false}
     >
       {/* Header - Always Visible */}
       <div className={`bg-gradient-to-br ${config.bgGradient} p-5 md:p-6 border-b ${config.border}`}>
@@ -164,7 +164,7 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
             >
               <motion.div
                 animate={{ rotate: isExpanded ? 180 : 0 }}
-                transition={{ duration: 0.2 }}
+                transition={{ duration: 0.15, ease: 'easeOut' }}
               >
                 <ICONS.ChevronDown size={18} />
               </motion.div>
@@ -227,7 +227,7 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: 'easeInOut' }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
             className="overflow-hidden bg-gray-50/30"
           >
             <div className="p-5 md:p-6 space-y-4">
@@ -382,6 +382,7 @@ const EntryCard: React.FC<{ entry: Entry; compact?: boolean }> = memo(({ entry, 
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.15, ease: 'easeOut' }}
                         className="overflow-hidden"
                       >
                         <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
